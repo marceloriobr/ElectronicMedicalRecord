@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/*
+ * Paleta baseada na identidade visual do consultório
+ * Dra. Verônica Avolio — Geriatria & Clínica Médica.
+ */
+:root {
+  --brand-petrol: #052d37; /* azul-petróleo (fundo do logo / cor principal) */
+  --brand-petrol-light: #0b4250; /* variação para hover e profundidade */
+  --brand-gold: #d8bf8c; /* dourado do nome no logo */
+  --brand-coral: #e55c3e; /* coral da flor de lótus (destaque) */
+  --brand-coral-dark: #c4462b; /* coral escuro: botões e textos (contraste AA) */
+  --brand-coral-darker: #a8391f; /* hover do botão */
+  --brand-cream: #faf6ef; /* fundo claro neutro */
+  --brand-gray: #b8b8b8; /* cinza secundário do site */
+  --brand-ink: #333333; /* texto */
+}
+
+@theme inline {
+  --color-petrol: var(--brand-petrol);
+  --color-petrol-light: var(--brand-petrol-light);
+  --color-gold: var(--brand-gold);
+  --color-coral: var(--brand-coral);
+  --color-coral-dark: var(--brand-coral-dark);
+  --color-coral-darker: var(--brand-coral-darker);
+  --color-cream: var(--brand-cream);
+  --color-brand-gray: var(--brand-gray);
+  --color-ink: var(--brand-ink);
+  --font-sans: var(--font-nunito-sans);
+  --font-serif: var(--font-marcellus);
+}
+
+body {
+  background: var(--brand-cream);
+  color: var(--brand-ink);
+}
