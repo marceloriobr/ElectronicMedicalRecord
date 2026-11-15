@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { USER_ROLES } from "@/db/schema";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { BR_UFS } from "@/lib/br-ufs";
 import { createUser, UserError } from "@/lib/user-service";
 
@@ -48,7 +48,7 @@ export async function createUserAction(
   _prev: CreateUserState,
   formData: FormData,
 ): Promise<CreateUserState> {
-  const admin = await requireUser(["admin"]);
+  const admin = await requirePermission("usuarios:gerenciar");
 
   const raw = {
     name: String(formData.get("name") ?? ""),

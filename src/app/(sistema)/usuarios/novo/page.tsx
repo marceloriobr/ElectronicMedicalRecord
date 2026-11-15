@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { UserForm } from "@/components/user-form";
-import { requireUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 
 export const metadata = { title: "Novo usuário | Prontuário Eletrônico" };
 
 export default async function NovoUsuarioPage() {
-  await requireUser(["admin"]);
+  await requirePermission("usuarios:gerenciar");
 
   return (
     <div className="mx-auto max-w-3xl">

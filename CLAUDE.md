@@ -19,12 +19,13 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 | # | Módulo | Status |
 |---|---|---|
 | 1 | Gestão de cadastro de usuários (login, perfis, política de senha) | ✅ Implementado |
-| 2 | Cadastro de pacientes e gestão de agenda | ⏳ A fazer |
+| 2a | Cadastro de pacientes (`/pacientes`: busca, cadastro, ficha, edição, inativação, consentimentos) | ✅ Implementado |
+| 2b | Gestão de agenda | ⏳ A fazer |
 | 3 | Gestão clínica do paciente (prontuário: anamnese, evolução, exames, diagnósticos, anexos) | ⏳ A fazer |
 | 4 | Relatórios gerenciais | ⏳ A fazer |
 | 5 | Receituário médico (simples e controle especial) | ⏳ A fazer |
 | 6 | Envio de mensagens por WhatsApp e e-mail | ⏳ A fazer |
-| 7 | Trilha de auditoria e painel LGPD (transversal a todos os módulos) | ⏳ A fazer |
+| 7 | Trilha de auditoria e painel LGPD (transversal a todos os módulos) | 🟡 Parcial: `audit_log` + `audit()` prontos (pacientes e acesso negado); falta login/logout e tela de consulta |
 
 Atualize esta tabela quando um módulo for entregue.
 
@@ -99,14 +100,15 @@ Regras:
 - A **secretária** vê apenas dados cadastrais, agenda e status administrativo — nunca diagnóstico, CID,
   evolução, medicamentos ou anexos clínicos.
 - Um usuário pode ter só um perfil. Médico precisa de CRM + UF válidos (já validado no cadastro).
-- Toda página e **toda Server Action** protegida começa com `await requireUser([...perfis])`
-  (`src/lib/auth.ts`). O `src/proxy.ts` é apenas verificação otimista — **nunca** é a única barreira.
+- Toda página e **toda Server Action** protegida começa com `await requirePermission("modulo:acao")`
+  (`src/lib/auth.ts`), que também audita o acesso negado. O `src/proxy.ts` é apenas verificação
+  otimista — **nunca** é a única barreira.
 - A autorização é sempre feita **no servidor**. Esconder botão na UI não é controle de acesso.
 - Checar também **autorização no nível do registro** (ex.: o médico só adita evoluções que ele mesmo
   escreveu; o paciente pertence ao consultório do usuário). Nunca confie em IDs vindos do cliente.
 - Ao criar uma nova rota protegida, adicione-a ao `matcher` de `src/proxy.ts`.
-- Centralize as permissões em um único lugar (ex.: `src/lib/permissions.ts` com
-  `can(user, "prontuario:ler")`) assim que houver mais de um módulo; não espalhe `if (role === ...)`.
+- As permissões ficam centralizadas em `src/lib/permissions.ts` (`PERMISSIONS` + `can(role, "...")`).
+  Novo módulo = novas chaves lá (ex.: `"prontuario:ler"`); não espalhe `if (role === ...)`.
 
 ---
 
@@ -158,7 +160,9 @@ Dados de saúde são **dados pessoais sensíveis** (LGPD art. 5º, II e art. 11)
 
 ### 4.3 Trilha de auditoria (obrigatória para novos módulos)
 
-Crie e use uma tabela `audit_log` **append-only** (sem UPDATE/DELETE pela aplicação) registrando:
+Use a tabela `audit_log` via `audit()` (`src/lib/audit.ts`). Ela é **append-only**: gatilhos no banco
+bloqueiam UPDATE/DELETE (o mesmo vale para DELETE em `patients` e para `patient_consents`).
+Ao adicionar ações, estenda `AUDIT_ACTIONS` em `src/db/schema.ts`. Registre:
 `quem` (userId), `quando`, `ação` (login, login_falho, logout, ler, criar, alterar, aditar, imprimir,
 exportar, enviar_mensagem, acesso_negado), `recurso` + `id do recurso`, `paciente_id` quando aplicável,
 IP e user-agent. **Não** grave o conteúdo clínico no log — só a referência.

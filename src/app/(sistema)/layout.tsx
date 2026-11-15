@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { logout } from "@/app/actions/auth";
 import { LotusIcon } from "@/components/lotus-icon";
 import { getSessionUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { ROLE_LABELS } from "@/lib/roles";
 
 /**
@@ -29,7 +30,12 @@ export default async function SistemaLayout({ children }: { children: React.Reac
             <Link href="/painel" className="hover:text-gold">
               Painel
             </Link>
-            {user.role === "admin" && (
+            {can(user.role, "pacientes:ler") && (
+              <Link href="/pacientes" className="hover:text-gold">
+                Pacientes
+              </Link>
+            )}
+            {can(user.role, "usuarios:gerenciar") && (
               <Link href="/usuarios" className="hover:text-gold">
                 Usuários
               </Link>
