@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { FormMessage } from "@/components/form-field";
+import { countDay } from "@/lib/appointment-service";
 import { requireUser } from "@/lib/auth";
+import { todayIso } from "@/lib/br-docs";
 import { can } from "@/lib/permissions";
 import { ROLE_LABELS } from "@/lib/roles";
 
@@ -23,6 +25,20 @@ export default async function PainelPage({ searchParams }: PageProps<"/painel">)
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {can(user.role, "agenda:ler") && (
+          <Link
+            href="/agenda"
+            className="rounded-lg border border-brand-gray/60 bg-white p-5 shadow-sm transition hover:border-petrol/50 hover:shadow"
+          >
+            <h2 className="font-serif text-lg text-petrol">Agenda</h2>
+            <p className="mt-1 text-sm text-ink/70" data-testid="painel-agenda">
+              {(() => {
+                const n = countDay(user, todayIso());
+                return n === 0 ? "Nenhuma consulta hoje." : `${n} consulta(s) hoje.`;
+              })()}
+            </p>
+          </Link>
+        )}
         {can(user.role, "pacientes:ler") && (
           <Link
             href="/pacientes"
@@ -41,10 +57,6 @@ export default async function PainelPage({ searchParams }: PageProps<"/painel">)
             <p className="mt-1 text-sm text-ink/70">Cadastre médicos, secretárias e administradores.</p>
           </Link>
         )}
-        <div className="rounded-lg border border-dashed border-brand-gray bg-white/50 p-5">
-          <h2 className="font-serif text-lg text-petrol/60">Agenda</h2>
-          <p className="mt-1 text-sm text-ink/50">Em breve.</p>
-        </div>
       </div>
     </div>
   );

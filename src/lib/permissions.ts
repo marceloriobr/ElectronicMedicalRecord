@@ -11,6 +11,13 @@ export const PERMISSIONS = {
   "pacientes:ler": ["admin", "medico", "secretaria"],
   "pacientes:editar": ["admin", "medico", "secretaria"],
   "pacientes:inativar": ["admin", "medico"],
+  /** Agenda: administrada pela secretária (todos os médicos) e pelo médico (somente a própria). */
+  "agenda:ler": ["medico", "secretaria"],
+  "agenda:gerenciar": ["medico", "secretaria"],
+  /** Ver e gerenciar a agenda de QUALQUER médico. Sem esta permissão, o médico só acessa a própria. */
+  "agenda:todos-medicos": ["secretaria"],
+  /** Iniciar/finalizar atendimento (ato médico; além disso, só o médico da consulta). */
+  "agenda:atender": ["medico"],
   "auditoria:ler": ["admin"],
 } as const satisfies Record<string, readonly UserRole[]>;
 
