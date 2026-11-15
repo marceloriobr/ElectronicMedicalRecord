@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { sessions, users, type UserRole } from "@/db/schema";
+import { audit } from "./audit";
 import { isPasswordExpired } from "./password-policy";
+import { can, type Permission } from "./permissions";
 
 export const SESSION_COOKIE = "emr_session";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
@@ -91,5 +93,19 @@ export async function requireUser(roles?: UserRole[]): Promise<SessionUser> {
   if (!user) redirect("/");
   if (user.passwordChangeRequired) redirect("/alterar-senha");
   if (roles && !roles.includes(user.role)) redirect("/painel?erro=acesso-negado");
+  return user;
+}
+
+/**
+ * Exige usuário autenticado com a permissão indicada (matriz em src/lib/permissions.ts).
+ * Acessos negados são registrados na trilha de auditoria.
+ * Use no início de toda página e Server Action protegida.
+ */
+export async function requirePermission(permission: Permission): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!can(user.role, permission)) {
+    await audit({ userId: user.id, action: "acesso_negado", resource: "permissao", resourceId: permission });
+    redirect("/painel?erro=acesso-negado");
+  }
   return user;
 }

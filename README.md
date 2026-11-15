@@ -50,9 +50,23 @@ npm run test:e2e                         # terminal 2
 
 | Perfil | Acesso |
 |---|---|
-| Administrador | Cadastra usuários (`/usuarios`) |
-| Médico(a) | Exige CRM + UF no cadastro |
-| Secretária | Acesso básico |
+| Administrador | Cadastra usuários (`/usuarios`); cadastra, edita e inativa pacientes |
+| Médico(a) | Exige CRM + UF no cadastro; cadastra, edita e inativa pacientes |
+| Secretária | Cadastra e edita pacientes (não inativa) |
+
+A matriz completa está em `src/lib/permissions.ts` (e na seção 3 do `CLAUDE.md`).
+
+## Cadastro de pacientes (`/pacientes`)
+
+- Busca por nome, nome social (sem diferenciar acentos/maiúsculas) ou CPF completo. A busca é enviada
+  por POST: o termo **nunca** aparece na URL. Listas mostram CPF e telefone **mascarados**.
+- Cadastro com validação de CPF e CNS (dígitos verificadores), telefone, CEP e e-mail.
+  CPF e CNS são únicos; mesmo nome + data de nascimento gera aviso de possível duplicidade.
+- Menor de 18 anos exige responsável legal; convênio exige nome e carteirinha.
+- Consentimento para WhatsApp/e-mail com versão do termo e **histórico** (revogação preserva o registro).
+- Pacientes **não são excluídos**: inativação com motivo (só administrador e médico); reativação possível.
+- Toda leitura, busca, criação, alteração, inativação e acesso negado vai para a trilha de auditoria,
+  sem nomes, CPFs ou termos pesquisados (apenas ids e nomes de campos alterados).
 
 ## Política de senhas
 
@@ -75,3 +89,6 @@ Tabelas (ver `src/db/schema.ts` e `drizzle/*.sql`):
 - `password_history`: hashes das últimas senhas de cada usuário.
 - `sessions`: sessões ativas (o cookie guarda um token aleatório; o banco guarda só o hash SHA-256 dele).
   Sessões expiram em 8 horas; trocar a senha encerra as demais sessões do usuário.
+- `patients`: identificação e contato dos pacientes (sem dados clínicos). DELETE bloqueado por gatilho.
+- `patient_consents`: histórico de consentimentos por canal (somente inclusão).
+- `audit_log`: trilha de auditoria (somente inclusão; UPDATE/DELETE bloqueados por gatilho).

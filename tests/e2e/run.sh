@@ -10,7 +10,11 @@ export EMR_ADMIN_USERNAME=admin
 export EMR_ADMIN_NAME="Administrador Geral"
 export EMR_ADMIN_PASSWORD="Lirio#Seguro-2027x"
 mkdir -p test-results
-node -e "const d=require('better-sqlite3')(process.env.DATABASE_FILE);d.exec('delete from sessions; delete from password_history; delete from users;')" 2>/dev/null \
-  || npm run --silent db:migrate
+# Sempre aplica migrações novas; depois zera os usuários do banco de TESTE.
+# Pacientes, consentimentos e auditoria NÃO podem ser apagados (gatilhos no banco):
+# o teste de pacientes usa CPFs e nomes aleatórios a cada execução.
+npm run --silent db:migrate
+node -e "const d=require('better-sqlite3')(process.env.DATABASE_FILE);d.exec('delete from sessions; delete from password_history; delete from users;')"
 npm run --silent db:seed
 node tests/e2e/usuarios-e-senhas.mjs
+node tests/e2e/pacientes.mjs
