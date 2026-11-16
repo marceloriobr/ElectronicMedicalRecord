@@ -18,6 +18,12 @@ export const PERMISSIONS = {
   "agenda:todos-medicos": ["secretaria"],
   /** Iniciar/finalizar atendimento (ato médico; além disso, só o médico da consulta). */
   "agenda:atender": ["medico"],
+  /** Configurar dias/horários de atendimento e duração da consulta (somente a PRÓPRIA grade). */
+  "agenda:disponibilidade": ["medico"],
+  /** Previsão de ocupação e oportunidades (secretária: todos os médicos; médico: a própria). */
+  "agenda:previsao": ["medico", "secretaria"],
+  /** Registrar alta do acompanhamento (ato médico; só dos próprios pacientes). */
+  "pacientes:alta": ["medico"],
   /** Prontuário clínico: somente médico (admin e secretária NUNCA veem dados clínicos). */
   "prontuario:ler": ["medico"],
   /** Registrar anamnese/evolução e alergias; editar rascunho e aditar só o PRÓPRIO registro (no serviço). */

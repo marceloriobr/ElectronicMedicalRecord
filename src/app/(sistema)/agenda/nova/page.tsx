@@ -2,10 +2,11 @@ import Link from "next/link";
 import { AppointmentForm } from "@/components/appointment-form";
 import { FormMessage } from "@/components/form-field";
 import { requirePermission } from "@/lib/auth";
-import { DEFAULT_DURATION } from "@/lib/appointment-constants";
+import { APPOINTMENT_DURATIONS, DEFAULT_DURATION } from "@/lib/appointment-constants";
 import { doctorsFor } from "@/lib/appointment-service";
 import { formatDateBr, todayIso } from "@/lib/br-docs";
 import { isIsoDate, isTime } from "@/lib/clinic-time";
+import { getSchedule } from "@/lib/forecast-service";
 import { can } from "@/lib/permissions";
 import { getPatient } from "@/lib/patient-service";
 
@@ -25,6 +26,12 @@ export default async function NovaConsultaPage({ searchParams }: PageProps<"/age
   const pid = Number(sp.paciente);
   const patient = Number.isInteger(pid) && pid > 0 ? getPatient(pid) : undefined;
   const preselected = patient?.active ? patient : undefined;
+
+  // Duração: ?duracao= (vinda da previsão) ou a duração configurada pelo médico; senão, o padrão.
+  const requestedDuration = Number(sp.duracao);
+  const duration = (APPOINTMENT_DURATIONS as readonly number[]).includes(requestedDuration)
+    ? requestedDuration
+    : ((doctorId && getSchedule(doctorId)?.slotMinutes) || DEFAULT_DURATION);
 
   const back = `/agenda?data=${date}${doctorId ? `&medico=${doctorId}` : ""}`;
 
@@ -48,7 +55,7 @@ export default async function NovaConsultaPage({ searchParams }: PageProps<"/age
               doctorId: doctorId ? String(doctorId) : "",
               date,
               time: isTime(sp.hora) ? sp.hora : "",
-              duration: String(DEFAULT_DURATION),
+              duration: String(duration),
               type: "consulta",
               patientId: preselected ? String(preselected.id) : "",
             }}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { useActionState, useState } from "react";
 import {
   addAddendumAction,
   cancelPrescriptionAction,
@@ -19,22 +19,11 @@ import {
   type PrescriptionType,
 } from "@/lib/clinical-constants";
 import { FormField, FormMessage } from "./form-field";
+import { submitWithoutReset } from "./submit-without-reset";
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from "./ui";
 
 const err = (errors: Record<string, string> | undefined, k: string) => errors?.[k];
 
-/**
- * Envia o formulário à Server Action SEM o reset automático do React 19 (que acontece com `<form action>`).
- * Necessário em formulários com campos controlados: o reset devolveria o DOM ao valor inicial
- * enquanto o estado do React continua com o valor digitado (ex.: tipo de receita trocado sem o usuário ver).
- */
-function submitWithoutReset(action: (fd: FormData) => void) {
-  return (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
-    startTransition(() => action(fd));
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Alergias e medicamentos em uso

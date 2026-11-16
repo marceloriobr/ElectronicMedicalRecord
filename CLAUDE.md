@@ -21,6 +21,7 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 | 1 | Gestão de cadastro de usuários (login, perfis, política de senha) | ✅ Implementado |
 | 2a | Cadastro de pacientes (`/pacientes`: busca, cadastro, ficha, edição, inativação, consentimentos) | ✅ Implementado |
 | 2b | Gestão de agenda (`/agenda`: dia por médico, agendar, remarcar, confirmar, cancelar, falta, atendimento) | ✅ Implementado |
+| 2c | Previsão da agenda (`/agenda/previsao`: grade semanal do médico, ocupação 3/6 meses, oportunidades, pacientes sem retorno, alta) | ✅ Implementado |
 | 3 | Gestão clínica do paciente (`/pacientes/[id]/prontuario`: anamnese, evolução, sinais vitais, CID-10 principal e secundários, alergias/medicamentos, aditamento) | 🟡 Parcial: falta upload de anexos/exames, atestado e pedido de exame |
 | 4 | Relatórios gerenciais | ⏳ A fazer |
 | 5 | Receituário médico (simples e controle especial, impressão em 2 vias, cancelamento) | 🟡 Parcial: falta assinatura digital ICP-Brasil e QR Code |
@@ -225,6 +226,17 @@ Leituras de prontuário também são auditadas (quem viu o quê).
     falta só após o horário; cancelamento exige motivo. Remarcar volta o status para "agendado".
   - Consultas não são excluídas (gatilho); `appointment_events` guarda o histórico (append-only).
   - Horários gravados em UTC; conversão do fuso do consultório em `src/lib/clinic-time.ts`.
+- Previsão (`src/lib/forecast-service.ts`, `availability-constants.ts`):
+  - O **médico** configura a própria grade (`/agenda/disponibilidade`): dias, até 3 faixas por dia e duração
+    da consulta. A secretária vê a previsão de todos os médicos; o médico só a própria; admin não acessa.
+  - Capacidade = horários da grade a partir de agora; ocupado = sobreposto a consulta que ocupa horário.
+    Feriados/ausências ainda não são descontados. A agenda do dia não é limitada pela grade.
+  - Sinalizados: 1ª consulta atendida com o médico há mais de 6 meses, sem alta posterior à última consulta
+    atendida e sem consulta futura (com qualquer médico). Alta (`patient_discharges`, somente inclusão) é
+    ato médico, com motivo em categoria — nunca texto clínico.
+  - Valores: o médico informa o valor particular por tipo (primeira consulta, consulta, retorno), em centavos
+    em `doctor_schedules`. Receita agendada = consultas marcadas × valor do tipo; potencial = livres × valor da
+    consulta. Painel e previsão mostram só agregados (médico: o próprio; secretária: todos; admin: nada).
 
 ### 6.3 Gestão clínica (prontuário)
 - Seguir a Res. CFM 1.638/2002 e 1.821/2007: identificação do paciente, anamnese, exame físico,

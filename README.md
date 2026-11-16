@@ -99,6 +99,8 @@ Tabelas (ver `src/db/schema.ts` e `drizzle/*.sql`):
 - `clinical_records`: anamneses e evoluções (conteúdo **cifrado**; rascunho → finalizado; finalizado imutável).
 - `clinical_addenda`: aditamentos dos registros finalizados (cifrados, somente inclusão).
 - `clinical_profiles`: alergias e medicamentos em uso, versionados (cifrados, somente inclusão).
+- `doctor_schedules` / `doctor_availability`: duração e valores da consulta e faixas semanais de cada médico.
+- `patient_discharges`: altas do acompanhamento (somente inclusão).
 - `prescriptions`: receitas emitidas (itens e identificação cifrados; só podem ser canceladas, com motivo).
 
 ## Agenda de consultas (`/agenda`)
@@ -127,3 +129,16 @@ Tabelas (ver `src/db/schema.ts` e `drizzle/*.sql`):
   - `EMR_CLINICAL_KEYS` — **guarde uma cópia segura: sem a chave o prontuário fica ilegível**;
   - `CLINIC_NAME`, `CLINIC_ADDRESS`, `CLINIC_PHONE` — impressos nas receitas.
 - Áreas clínicas encerram a sessão após 30 minutos sem atividade.
+
+## Previsão da agenda (`/agenda/previsao`)
+
+- O médico configura em **Minha disponibilidade** os dias e horários em que atende e a duração da consulta.
+- Para os próximos **3 ou 6 meses**: capacidade, ocupados, livres e taxa de ocupação; gráfico de barras
+  semanal (ocupados × livres) e de horários livres por dia da semana; destaques (semana, dia e período com
+  mais vagas) e os próximos dias com horários livres — cada horário leva direto ao agendamento.
+- **Pacientes sem retorno marcado**: em acompanhamento há mais de 6 meses, sem alta e sem consulta futura,
+  com atalho "Agendar retorno". O médico pode registrar a **alta** (o paciente volta a aparecer se for atendido de novo).
+- **Visão financeira**: com os valores de consulta particular (primeira, consulta, retorno) informados na
+  disponibilidade, mostra receita agendada, receita potencial dos horários livres e gráfico mensal; o Painel
+  traz o resumo dos próximos 3 meses. Convênios, descontos e faltas não são descontados.
+- Secretária: previsão de todos os médicos (sem registrar alta). Médico: só a própria. Administrador: sem acesso.

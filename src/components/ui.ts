@@ -14,3 +14,6 @@ export const secondaryButtonClass =
   "inline-flex items-center justify-center rounded-md border border-petrol/30 bg-white px-4 py-2.5 " +
   "font-semibold text-petrol transition-colors hover:bg-petrol/5 focus:outline-none " +
   "focus-visible:ring-2 focus-visible:ring-petrol/30";
+
+/** Campo compacto (largura definida por quem usa): mesmo visual do inputClass, sem largura total. */
+export const compactInputClass = inputClass.replace("block w-full", "inline-block").replace("mt-1 ", "");

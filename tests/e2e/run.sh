@@ -22,3 +22,4 @@ node tests/e2e/usuarios-e-senhas.mjs
 node tests/e2e/pacientes.mjs
 node tests/e2e/agenda.mjs
 node tests/e2e/prontuario.mjs
+node tests/e2e/previsao.mjs

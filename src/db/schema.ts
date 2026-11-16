@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { APPOINTMENT_STATUS, APPOINTMENT_TYPES } from "../lib/appointment-constants";
+import { DISCHARGE_REASONS } from "../lib/availability-constants";
 import { PRESCRIPTION_STATUS, PRESCRIPTION_TYPES, RECORD_KINDS, RECORD_STATUS } from "../lib/clinical-constants";
 import { CONSENT_CHANNELS, PATIENT_COVERAGE, PATIENT_SEX } from "../lib/patient-constants";
 import { USER_ROLES } from "../lib/roles";
@@ -365,3 +366,68 @@ export const prescriptions = sqliteTable(
 
 export type ClinicalRecord = typeof clinicalRecords.$inferSelect;
 export type Prescription = typeof prescriptions.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Disponibilidade dos médicos (grade semanal) e altas — base da previsão de agenda.
+// ---------------------------------------------------------------------------
+
+/** Duração padrão da consulta de cada médico (configurada pelo próprio médico). */
+export const doctorSchedules = sqliteTable(
+  "doctor_schedules",
+  {
+    doctorId: integer("doctor_id")
+      .primaryKey()
+      .references(() => users.id),
+    slotMinutes: integer("slot_minutes").notNull(),
+    /** Valores da consulta particular, em centavos, por tipo (base da visão financeira). */
+    priceFirstCents: integer("price_first_cents").notNull().default(0),
+    priceCents: integer("price_cents").notNull().default(0),
+    priceReturnCents: integer("price_return_cents").notNull().default(0),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(now),
+    updatedBy: integer("updated_by").notNull(),
+  },
+  (t) => [check("doctor_schedules_slot_check", sql`${t.slotMinutes} in (15, 20, 30, 45, 60, 90)`)],
+);
+
+/** Faixas de atendimento por dia da semana (0 = domingo … 6 = sábado), horário do consultório "HH:MM". */
+export const doctorAvailability = sqliteTable(
+  "doctor_availability",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    doctorId: integer("doctor_id")
+      .notNull()
+      .references(() => users.id),
+    weekday: integer("weekday").notNull(),
+    startTime: text("start_time").notNull(),
+    endTime: text("end_time").notNull(),
+  },
+  (t) => [
+    index("doctor_availability_doctor_idx").on(t.doctorId, t.weekday),
+    check("doctor_availability_weekday_check", sql`${t.weekday} between 0 and 6`),
+    check("doctor_availability_time_check", sql`${t.startTime} < ${t.endTime} and ${t.startTime} >= '07:00' and ${t.endTime} <= '20:00'`),
+  ],
+);
+
+/**
+ * Alta do acompanhamento de um paciente com um médico (somente inclusão).
+ * Vale enquanto não houver consulta atendida depois dela: se o paciente voltar, o acompanhamento reabre.
+ */
+export const patientDischarges = sqliteTable(
+  "patient_discharges",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => patients.id),
+    doctorId: integer("doctor_id")
+      .notNull()
+      .references(() => users.id),
+    reason: text("reason", { enum: DISCHARGE_REASONS }).notNull(),
+    recordedBy: integer("recorded_by").notNull(),
+    at: integer("at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [
+    index("patient_discharges_patient_idx").on(t.patientId, t.doctorId),
+    check("patient_discharges_reason_check", sql`${t.reason} in ('alta_medica', 'encaminhado', 'desistencia', 'obito', 'outro')`),
+  ],
+);
