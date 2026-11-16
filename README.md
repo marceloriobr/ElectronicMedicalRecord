@@ -30,6 +30,7 @@ No primeiro acesso, o administrador é obrigado a trocar a senha provisória.
 | `npm run db:migrate` | Aplica as migrações no banco |
 | `npm run db:seed` | Cria o administrador inicial a partir do `.env.local` |
 | `npm run db:reset-admin` | Volta o administrador para a senha provisória do `.env.local` (desbloqueia e exige troca) |
+| `npm run db:seed-pacientes` | Cadastra 15 pacientes **fictícios** para testes (idempotente) |
 | `npm run typecheck` | Checagem de tipos |
 | `npm run test:e2e` | Testes de ponta a ponta no Google Chrome (ver abaixo) |
 
@@ -95,6 +96,10 @@ Tabelas (ver `src/db/schema.ts` e `drizzle/*.sql`):
 - `appointments`: consultas (médico, paciente, início/fim em UTC, tipo, situação, observação
   administrativa, encaixe, motivo do cancelamento). DELETE bloqueado por gatilho.
 - `appointment_events`: histórico de cada consulta (agendada, remarcada, mudanças de situação), somente inclusão.
+- `clinical_records`: anamneses e evoluções (conteúdo **cifrado**; rascunho → finalizado; finalizado imutável).
+- `clinical_addenda`: aditamentos dos registros finalizados (cifrados, somente inclusão).
+- `clinical_profiles`: alergias e medicamentos em uso, versionados (cifrados, somente inclusão).
+- `prescriptions`: receitas emitidas (itens e identificação cifrados; só podem ser canceladas, com motivo).
 
 ## Agenda de consultas (`/agenda`)
 
@@ -108,3 +113,17 @@ Tabelas (ver `src/db/schema.ts` e `drizzle/*.sql`):
   Cancelado (com motivo). Remarcar volta para "Agendado". Histórico completo em cada consulta.
 - Médico só vê e gerencia a própria agenda; a secretária, a de todos. Administrador não acessa.
 - A ficha do paciente mostra as consultas e tem atalho "Agendar consulta".
+
+## Prontuário e receituário (somente médico)
+
+- Acesso pela ficha do paciente (botão **Prontuário**) ou pela consulta em atendimento
+  (**Registrar no prontuário**). Administrador e secretária não acessam dados clínicos.
+- Alergias e medicamentos em uso sempre no topo. Anamnese (primeira consulta) e evolução (retorno) com
+  sinais vitais, **CID-10 principal e secundários** (tabela oficial DATASUS), avaliação e plano.
+- Rascunho visível só para o autor; após **finalizar**, o registro é imutável — correções por aditamento.
+- Receitas: simples ou de **controle especial** (2 vias, Portaria 344/1998). Substâncias que exigem
+  notificação (A/B) são bloqueadas. Receita emitida não muda; pode ser cancelada com motivo.
+- Conteúdo clínico cifrado com AES-256-GCM. Configure no `.env.local`:
+  - `EMR_CLINICAL_KEYS` — **guarde uma cópia segura: sem a chave o prontuário fica ilegível**;
+  - `CLINIC_NAME`, `CLINIC_ADDRESS`, `CLINIC_PHONE` — impressos nas receitas.
+- Áreas clínicas encerram a sessão após 30 minutos sem atividade.

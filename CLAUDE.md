@@ -21,9 +21,9 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 | 1 | Gestão de cadastro de usuários (login, perfis, política de senha) | ✅ Implementado |
 | 2a | Cadastro de pacientes (`/pacientes`: busca, cadastro, ficha, edição, inativação, consentimentos) | ✅ Implementado |
 | 2b | Gestão de agenda (`/agenda`: dia por médico, agendar, remarcar, confirmar, cancelar, falta, atendimento) | ✅ Implementado |
-| 3 | Gestão clínica do paciente (prontuário: anamnese, evolução, exames, diagnósticos, anexos) | ⏳ A fazer |
+| 3 | Gestão clínica do paciente (`/pacientes/[id]/prontuario`: anamnese, evolução, sinais vitais, CID-10 principal e secundários, alergias/medicamentos, aditamento) | 🟡 Parcial: falta upload de anexos/exames, atestado e pedido de exame |
 | 4 | Relatórios gerenciais | ⏳ A fazer |
-| 5 | Receituário médico (simples e controle especial) | ⏳ A fazer |
+| 5 | Receituário médico (simples e controle especial, impressão em 2 vias, cancelamento) | 🟡 Parcial: falta assinatura digital ICP-Brasil e QR Code |
 | 6 | Envio de mensagens por WhatsApp e e-mail | ⏳ A fazer |
 | 7 | Trilha de auditoria e painel LGPD (transversal a todos os módulos) | 🟡 Parcial: `audit_log` + `audit()` prontos (pacientes e acesso negado); falta login/logout e tela de consulta |
 
@@ -50,6 +50,7 @@ npm run db:generate      # gera migração após alterar src/db/schema.ts
 npm run db:migrate       # aplica migrações
 npm run db:seed          # cria o admin inicial (.env.local)
 npm run db:reset-admin   # volta o admin para a senha provisória
+npm run db:seed-pacientes # cadastra 15 pacientes FICTÍCIOS (idempotente)
 npm run test:e2e         # E2E no Chrome contra data/test.db
 ```
 
@@ -232,6 +233,15 @@ Leituras de prontuário também são auditadas (quem viu o quê).
   correção por aditamento.
 - Alergias e medicamentos em uso sempre visíveis no topo do prontuário.
 - Considerar assinatura digital ICP-Brasil (padrão NGS2/SBIS) para o prontuário 100% eletrônico sem papel.
+- Implementação (`src/lib/clinical-service.ts`, `clinical-schema.ts`, `clinical-constants.ts`, `clinical-crypto.ts`):
+  - Todo conteúdo clínico fica no campo `payload` cifrado (AES-256-GCM, chave em `EMR_CLINICAL_KEYS`,
+    AAD = tabela + paciente). **Nunca** grave texto clínico em colunas em claro; para consultar, decifre no servidor.
+  - Rascunho: visível e editável só pelo autor. Finalizar exige CID principal, queixa/quadro atual e plano.
+    Gatilhos no banco impedem alterar registro finalizado e excluir qualquer registro, aditamento ou
+    versão de alergias/medicamentos (`clinical_profiles`, versionado).
+  - Aditamento só pelo autor e só em registro finalizado. Todo médico lê os registros finalizados.
+  - CID-10: tabela oficial DATASUS (`src/data/cid10.json`), busca no servidor via Server Action.
+  - Áreas clínicas usam `requireClinicalPermission()` (perfil + **encerramento após 30 min de inatividade**).
 
 ### 6.4 Relatórios gerenciais
 - Por padrão, relatórios são **agregados e sem identificação** (atendimentos por período, taxa de faltas,
@@ -249,6 +259,11 @@ Leituras de prontuário também são auditadas (quem viu o quê).
   como receita comum. Na dúvida, bloquear e sinalizar.
 - Receita emitida é imutável; cancelamento registra motivo e mantém o original. Toda emissão, impressão e
   envio é auditado.
+- Implementação: `classifyMedication()` (`clinical-constants.ts`) bloqueia no servidor substâncias de
+  **notificação** (A, B1, B2, C2, C3) e controladas (C1 etc.) em receita simples — listas **parciais**,
+  revisar com a médica. Controle especial exige endereço do paciente; impressão em 2 vias (farmácia/paciente)
+  com campos de comprador e fornecedor; antimicrobiano em receita simples também sai em 2 vias (RDC 471/2021).
+  Identificação do médico e do paciente é copiada na emissão. Endereço do consultório: `CLINIC_ADDRESS`.
 
 ### 6.6 Mensagens por WhatsApp e e-mail
 - Usar **somente APIs oficiais** (WhatsApp Business Platform/Cloud API; provedor de e-mail transacional

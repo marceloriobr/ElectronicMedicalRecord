@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AppointmentActions, type StatusAction } from "@/components/appointment-actions";
 import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
 import { FormMessage } from "@/components/form-field";
-import { secondaryButtonClass } from "@/components/ui";
+import { primaryButtonClass, secondaryButtonClass } from "@/components/ui";
 import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/auth";
 import {
@@ -84,6 +84,14 @@ export default async function ConsultaPage({ params, searchParams }: PageProps<"
               {a.overbooked && <span className="text-xs font-semibold text-amber-700">Encaixe</span>}
             </div>
           </div>
+          {can(user.role, "prontuario:escrever") && user.id === a.doctorId && ["em_atendimento", "atendido"].includes(a.status) && (
+            <Link
+              href={`/pacientes/${patient.id}/prontuario/novo?tipo=${a.type === "primeira_consulta" ? "anamnese" : "evolucao"}&consulta=${a.id}`}
+              className={primaryButtonClass}
+            >
+              Registrar no prontuário
+            </Link>
+          )}
           {canReschedule && (
             <Link href={`/agenda/${a.id}/remarcar`} className={secondaryButtonClass}>
               Remarcar

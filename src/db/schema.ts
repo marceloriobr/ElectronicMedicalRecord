@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { APPOINTMENT_STATUS, APPOINTMENT_TYPES } from "../lib/appointment-constants";
+import { PRESCRIPTION_STATUS, PRESCRIPTION_TYPES, RECORD_KINDS, RECORD_STATUS } from "../lib/clinical-constants";
 import { CONSENT_CHANNELS, PATIENT_COVERAGE, PATIENT_SEX } from "../lib/patient-constants";
 import { USER_ROLES } from "../lib/roles";
 
@@ -59,6 +60,9 @@ export const sessions = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+    /** Última requisição autenticada: base do encerramento por inatividade nas áreas clínicas. */
+    // Default constante (exigência do ALTER TABLE no SQLite); createSession grava o valor real.
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull().default(sql`0`),
   },
   (t) => [index("sessions_user_idx").on(t.userId)],
 );
@@ -150,7 +154,10 @@ export const patientConsents = sqliteTable(
 // Nunca grave aqui conteúdo pessoal ou clínico — apenas referências (ids) e nomes de campos.
 // ---------------------------------------------------------------------------
 
-export const AUDIT_ACTIONS = ["ler", "buscar", "criar", "alterar", "inativar", "reativar", "acesso_negado"] as const;
+export const AUDIT_ACTIONS = [
+  "ler", "buscar", "criar", "alterar", "inativar", "reativar", "acesso_negado",
+  "finalizar", "aditar", "emitir", "imprimir", "cancelar", "sessao_expirada",
+] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export const auditLog = sqliteTable(
@@ -243,3 +250,118 @@ export const appointmentEvents = sqliteTable(
 );
 
 export type Appointment = typeof appointments.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Prontuário clínico (dados SENSÍVEIS de saúde — LGPD art. 11).
+// Todo conteúdo clínico fica em `payload`: JSON criptografado com AES-256-GCM (src/lib/clinical-crypto.ts),
+// chave fora do banco e versão da chave em `key_version`. Nada aqui é excluído (gatilhos no banco):
+// - registros: editáveis só como rascunho; após "finalizado" são imutáveis (correção por aditamento);
+// - aditamentos e perfis clínicos: somente inclusão;
+// - receitas: imutáveis após emitidas; só podem ser canceladas (com motivo), preservando o original.
+// ---------------------------------------------------------------------------
+
+/** Anamnese / evolução: um registro por atendimento. */
+export const clinicalRecords = sqliteTable(
+  "clinical_records",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => patients.id),
+    authorId: integer("author_id")
+      .notNull()
+      .references(() => users.id),
+    /** Consulta da agenda que originou o registro (opcional). */
+    appointmentId: integer("appointment_id").references(() => appointments.id),
+    kind: text("kind", { enum: RECORD_KINDS }).notNull(),
+    status: text("status", { enum: RECORD_STATUS }).notNull().default("rascunho"),
+    keyVersion: integer("key_version").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(now),
+    finalizedAt: integer("finalized_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    index("clinical_records_patient_idx").on(t.patientId, t.createdAt),
+    check("clinical_records_kind_check", sql`${t.kind} in ('anamnese', 'evolucao')`),
+    check("clinical_records_status_check", sql`${t.status} in ('rascunho', 'finalizado')`),
+    check("clinical_records_finalized_check", sql`${t.status} <> 'finalizado' or ${t.finalizedAt} is not null`),
+  ],
+);
+
+/** Aditamento/retificação de um registro finalizado: texto + motivo, autor e data/hora do servidor. */
+export const clinicalAddenda = sqliteTable(
+  "clinical_addenda",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    recordId: integer("record_id")
+      .notNull()
+      .references(() => clinicalRecords.id),
+    authorId: integer("author_id")
+      .notNull()
+      .references(() => users.id),
+    keyVersion: integer("key_version").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("clinical_addenda_record_idx").on(t.recordId)],
+);
+
+/**
+ * Alergias e medicamentos em uso (sempre visíveis no topo do prontuário).
+ * Versionado e somente de inclusão: a versão vigente é a mais recente.
+ */
+export const clinicalProfiles = sqliteTable(
+  "clinical_profiles",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => patients.id),
+    authorId: integer("author_id")
+      .notNull()
+      .references(() => users.id),
+    keyVersion: integer("key_version").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("clinical_profiles_patient_idx").on(t.patientId, t.id)],
+);
+
+/** Receitas emitidas. Identificação do médico copiada na emissão (o documento não muda depois). */
+export const prescriptions = sqliteTable(
+  "prescriptions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => patients.id),
+    authorId: integer("author_id")
+      .notNull()
+      .references(() => users.id),
+    recordId: integer("record_id").references(() => clinicalRecords.id),
+    type: text("type", { enum: PRESCRIPTION_TYPES }).notNull(),
+    status: text("status", { enum: PRESCRIPTION_STATUS }).notNull().default("emitida"),
+    doctorName: text("doctor_name").notNull(),
+    doctorCrm: text("doctor_crm").notNull(),
+    doctorCrmUf: text("doctor_crm_uf").notNull(),
+    keyVersion: integer("key_version").notNull(),
+    payload: text("payload").notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull().default(now),
+    cancelledAt: integer("cancelled_at", { mode: "timestamp_ms" }),
+    cancelledBy: integer("cancelled_by"),
+    cancelReason: text("cancel_reason"),
+  },
+  (t) => [
+    index("prescriptions_patient_idx").on(t.patientId, t.issuedAt),
+    check("prescriptions_type_check", sql`${t.type} in ('simples', 'controle_especial')`),
+    check("prescriptions_status_check", sql`${t.status} in ('emitida', 'cancelada')`),
+    check(
+      "prescriptions_cancel_check",
+      sql`${t.status} <> 'cancelada' or (${t.cancelReason} is not null and ${t.cancelledAt} is not null and ${t.cancelledBy} is not null)`,
+    ),
+  ],
+);
+
+export type ClinicalRecord = typeof clinicalRecords.$inferSelect;
+export type Prescription = typeof prescriptions.$inferSelect;
