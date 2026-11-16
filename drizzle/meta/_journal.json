@@ -29,6 +29,20 @@
       "when": 1794793315163,
       "tag": "0003_prontuario_receituario",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794796643380,
+      "tag": "0004_disponibilidade_previsao",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794797899285,
+      "tag": "0005_valores_consulta",
+      "breakpoints": true
     }
   ]
 }

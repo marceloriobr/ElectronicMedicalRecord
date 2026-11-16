@@ -83,11 +83,18 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
             {doctor.crm && ` · CRM ${doctor.crm}/${doctor.crmUf}`}
           </p>
         </div>
-        {canManage && (
-          <Link href={`/agenda/nova?medico=${doctor.id}&data=${date}`} className={primaryButtonClass}>
-            + Agendar consulta
-          </Link>
-        )}
+        <div className="flex flex-wrap gap-3">
+          {can(user.role, "agenda:previsao") && (
+            <Link href={`/agenda/previsao?medico=${doctor.id}`} className={secondaryButtonClass}>
+              Previsão e oportunidades
+            </Link>
+          )}
+          {canManage && (
+            <Link href={`/agenda/nova?medico=${doctor.id}&data=${date}`} className={primaryButtonClass}>
+              + Agendar consulta
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-brand-gray/60 bg-white p-4 shadow-sm">
