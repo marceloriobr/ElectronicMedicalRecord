@@ -21,7 +21,7 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 | 1 | Gestão de cadastro de usuários (login, perfis, política de senha) | ✅ Implementado |
 | 2a | Cadastro de pacientes (`/pacientes`: busca, cadastro, ficha, edição, inativação, consentimentos) | ✅ Implementado |
 | 2b | Gestão de agenda (`/agenda`: dia por médico, agendar, remarcar, confirmar, cancelar, falta, atendimento) | ✅ Implementado |
-| 2c | Previsão da agenda (`/agenda/previsao`: grade semanal do médico, ocupação 3/6 meses, oportunidades, pacientes sem retorno, alta) | ✅ Implementado |
+| 2c | Previsão da agenda (`/agenda/previsao`: grade semanal e valores da consulta, ocupação 3/6 meses, oportunidades, pacientes sem retorno, alta, visão financeira na previsão e no Painel) | ✅ Implementado |
 | 3 | Gestão clínica do paciente (`/pacientes/[id]/prontuario`: anamnese, evolução, sinais vitais, CID-10 principal e secundários, alergias/medicamentos, aditamento) | 🟡 Parcial: falta upload de anexos/exames, atestado e pedido de exame |
 | 4 | Relatórios gerenciais | ⏳ A fazer |
 | 5 | Receituário médico (simples e controle especial, impressão em 2 vias, cancelamento) | 🟡 Parcial: falta assinatura digital ICP-Brasil e QR Code |
@@ -29,6 +29,40 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 | 7 | Trilha de auditoria e painel LGPD (transversal a todos os módulos) | 🟡 Parcial: `audit_log` + `audit()` prontos (pacientes e acesso negado); falta login/logout e tela de consulta |
 
 Atualize esta tabela quando um módulo for entregue.
+
+### Situação do desenvolvimento (atualizado em 16/11/2026)
+
+Histórico de entregas (todas mescladas no `main`, com E2E no Chrome contra `data/test.db`):
+
+| PR | Entrega |
+|---|---|
+| #1 | Base do sistema, login, cadastro de usuários, política de senha, sessões |
+| #2 | Documentação de regras do projeto (CLAUDE.md) |
+| #3 | Cadastro de pacientes, consentimentos, auditoria (`audit_log`) |
+| #4 | Agenda de consultas (secretária e médico), histórico `appointment_events` |
+| #5 | Prontuário clínico criptografado (AES-256-GCM), CID-10 DATASUS, aditamento, receituário simples e de controle especial, timeout de 30 min nas áreas clínicas |
+| #6 | Previsão da agenda: disponibilidade do médico, gráficos de barras, oportunidades, pacientes sem retorno + alta, valores da consulta e visão financeira (previsão e Painel) |
+
+Estado do ambiente (Codespace):
+- Banco real de desenvolvimento `data/emr.db` com migrações até `0005_valores_consulta`; backups datados em
+  `data/emr.db.backup-*` (um antes de cada migração). Contém 15 pacientes **fictícios** (`npm run db:seed-pacientes`)
+  e nenhuma consulta passada — por isso a lista "Pacientes sem retorno" fica vazia nele.
+- Usuários do `emr.db`: `admin`, médica e secretária criados pelo responsável (senhas não ficam registradas;
+  use **Usuários → redefinir senha provisória** ou `npm run db:reset-admin`). Usuários e senhas do banco de
+  teste estão em `tests/e2e/` e só valem em `data/test.db`.
+- Para a visão financeira aparecer no `emr.db`, a médica precisa configurar disponibilidade e valores em
+  **Previsão → Configurar minha disponibilidade**.
+- Branch `feat/previsao-agenda` já mesclado (PR #6) — pode ser apagado (local e remoto).
+
+Próximos passos sugeridos (pendentes, em ordem de prioridade):
+1. Prontuário: upload de anexos/exames (criptografados, validação por magic bytes), atestado e pedido de exame.
+2. Auditoria: registrar login/logout e criar a tela de consulta da trilha (somente admin).
+3. Relatórios gerenciais agregados (módulo 4) e exportação auditada.
+4. Previsão: descontar feriados/ausências do médico; opcionalmente limitar o agendamento à grade.
+5. Seed fictício com histórico de consultas (para demonstrar "pacientes sem retorno" e receita).
+6. Receituário: assinatura digital ICP-Brasil e QR Code de validação.
+7. Mensagens WhatsApp/e-mail (APIs oficiais, consentimento, fila) — módulo 6.
+8. Antes de produção: MFA para médicos/admin, cabeçalhos de segurança (CSP/HSTS), backups criptografados, rate limiting.
 
 ---
 
