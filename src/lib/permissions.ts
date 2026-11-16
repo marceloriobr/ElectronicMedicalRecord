@@ -18,6 +18,12 @@ export const PERMISSIONS = {
   "agenda:todos-medicos": ["secretaria"],
   /** Iniciar/finalizar atendimento (ato médico; além disso, só o médico da consulta). */
   "agenda:atender": ["medico"],
+  /** Prontuário clínico: somente médico (admin e secretária NUNCA veem dados clínicos). */
+  "prontuario:ler": ["medico"],
+  /** Registrar anamnese/evolução e alergias; editar rascunho e aditar só o PRÓPRIO registro (no serviço). */
+  "prontuario:escrever": ["medico"],
+  /** Emitir, imprimir e cancelar receitas (cancelar só a própria — no serviço). */
+  "receita:emitir": ["medico"],
   "auditoria:ler": ["admin"],
 } as const satisfies Record<string, readonly UserRole[]>;
 

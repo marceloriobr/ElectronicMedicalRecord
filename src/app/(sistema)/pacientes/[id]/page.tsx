@@ -65,6 +65,11 @@ export default async function PacientePage({ params, searchParams }: PageProps<"
             </div>
           </div>
           <div className="flex flex-wrap items-start gap-3">
+            {can(user.role, "prontuario:ler") && (
+              <Link href={`/pacientes/${patient.id}/prontuario`} className={primaryButtonClass}>
+                Prontuário
+              </Link>
+            )}
             {patient.active && can(user.role, "agenda:gerenciar") && (
               <Link href={`/agenda/nova?paciente=${patient.id}`} className={secondaryButtonClass}>
                 Agendar consulta

@@ -46,3 +46,6 @@ next-env.d.ts
 
 # resultados de testes
 /test-results/
+
+# Claude Code (cópias de trabalho temporárias, configurações locais)
+/.claude/

@@ -12,7 +12,8 @@
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed-admin.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "bash tests/e2e/run.sh",
-    "db:reset-admin": "tsx --env-file-if-exists=.env.local scripts/reset-admin-password.ts"
+    "db:reset-admin": "tsx --env-file-if-exists=.env.local scripts/reset-admin-password.ts",
+    "db:seed-pacientes": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/seed-patients.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.2.0",

@@ -12,6 +12,10 @@ import { can, type Permission } from "./permissions";
 
 export const SESSION_COOKIE = "emr_session";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
+/** Áreas clínicas: sessão encerrada após este tempo sem nenhuma requisição (CLAUDE.md, seção 5). */
+export const CLINICAL_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+/** Evita gravar no banco a cada requisição: atualiza a "última atividade" no máximo 1x por minuto. */
+const TOUCH_INTERVAL_MS = 60 * 1000;
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -20,7 +24,7 @@ function hashToken(token: string) {
 export async function createSession(userId: number) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  db.insert(sessions).values({ id: hashToken(token), userId, expiresAt }).run();
+  db.insert(sessions).values({ id: hashToken(token), userId, expiresAt, lastSeenAt: new Date() }).run();
 
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -44,6 +48,8 @@ export type SessionUser = {
   username: string;
   role: UserRole;
   sessionId: string;
+  /** Última atividade ANTES desta requisição (para o encerramento por inatividade). */
+  lastSeenAt: Date;
   /** Senha provisória ou vencida (mais de 3 meses): precisa ser trocada. */
   passwordChangeRequired: boolean;
   passwordExpired: boolean;
@@ -64,6 +70,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       active: users.active,
       mustChangePassword: users.mustChangePassword,
       passwordChangedAt: users.passwordChangedAt,
+      lastSeenAt: sessions.lastSeenAt,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
@@ -72,6 +79,11 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 
   if (!row || !row.active) return null;
 
+  const now = Date.now();
+  if (now - row.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
+    db.update(sessions).set({ lastSeenAt: new Date(now) }).where(eq(sessions.id, sessionId)).run();
+  }
+
   const passwordExpired = isPasswordExpired(row.passwordChangedAt);
   return {
     id: row.id,
@@ -79,6 +91,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     username: row.username,
     role: row.role,
     sessionId,
+    lastSeenAt: row.lastSeenAt,
     passwordExpired,
     passwordChangeRequired: row.mustChangePassword || passwordExpired,
   };
@@ -106,6 +119,21 @@ export async function requirePermission(permission: Permission): Promise<Session
   if (!can(user.role, permission)) {
     await audit({ userId: user.id, action: "acesso_negado", resource: "permissao", resourceId: permission });
     redirect("/painel?erro=acesso-negado");
+  }
+  return user;
+}
+
+/**
+ * Porta de entrada das áreas clínicas (prontuário, receitas): exige a permissão e encerra a sessão
+ * se o usuário ficou mais de 30 minutos sem atividade.
+ */
+export async function requireClinicalPermission(permission: Permission): Promise<SessionUser> {
+  const user = await requirePermission(permission);
+  if (Date.now() - user.lastSeenAt.getTime() > CLINICAL_IDLE_TIMEOUT_MS) {
+    // Em Server Components o cookie não pode ser apagado; invalidar a sessão no banco basta.
+    db.delete(sessions).where(eq(sessions.id, user.sessionId)).run();
+    await audit({ userId: user.id, action: "sessao_expirada", resource: "sessao", details: { motivo: "inatividade" } });
+    redirect("/?sessao=expirada");
   }
   return user;
 }
