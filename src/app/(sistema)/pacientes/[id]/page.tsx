@@ -2,7 +2,10 @@ import Link from "next/link";
 import { Badge } from "@/components/badge";
 import { FormMessage } from "@/components/form-field";
 import { PatientStatusForm } from "@/components/patient-status-form";
-import { primaryButtonClass } from "@/components/ui";
+import { AppointmentStatusBadge } from "@/components/appointment-status-badge";
+import { primaryButtonClass, secondaryButtonClass } from "@/components/ui";
+import { APPOINTMENT_TYPE_LABELS } from "@/lib/appointment-constants";
+import { listPatientAppointments } from "@/lib/appointment-service";
 import { audit } from "@/lib/audit";
 import { requirePermission } from "@/lib/auth";
 import { ageFromBirthDate, formatCep, formatCns, formatCpf, formatDateBr, formatPhone } from "@/lib/br-docs";
@@ -32,6 +35,8 @@ export default async function PacientePage({ params, searchParams }: PageProps<"
   const age = ageFromBirthDate(patient.birthDate);
   const consents = getCurrentConsents(patient.id);
   const history = getConsentHistory(patient.id);
+  // Só as consultas dos médicos cuja agenda o usuário pode ver (médico: a própria).
+  const appointments = can(user.role, "agenda:ler") ? listPatientAppointments(patient.id, user) : [];
   const address = [
     [patient.street, patient.number].filter(Boolean).join(", "),
     patient.complement,
@@ -60,6 +65,11 @@ export default async function PacientePage({ params, searchParams }: PageProps<"
             </div>
           </div>
           <div className="flex flex-wrap items-start gap-3">
+            {patient.active && can(user.role, "agenda:gerenciar") && (
+              <Link href={`/agenda/nova?paciente=${patient.id}`} className={secondaryButtonClass}>
+                Agendar consulta
+              </Link>
+            )}
             {patient.active && can(user.role, "pacientes:editar") && (
               <Link href={`/pacientes/${patient.id}/editar`} className={primaryButtonClass}>
                 Editar cadastro
@@ -147,6 +157,29 @@ export default async function PacientePage({ params, searchParams }: PageProps<"
           <Item label="Última alteração" value={`${dateTime.format(patient.updatedAt)} por ${getUserName(patient.updatedBy) ?? "—"}`} />
         </Section>
       </div>
+
+      {can(user.role, "agenda:ler") && (
+        <section className="rounded-lg border border-brand-gray/60 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 font-serif text-lg text-petrol">Consultas</h2>
+          {appointments.length === 0 ? (
+            <p className="text-sm text-ink/60">Nenhuma consulta.</p>
+          ) : (
+            <ul className="divide-y divide-brand-gray/40 text-sm" data-testid="patient-appointments">
+              {appointments.map((ap) => (
+                <li key={ap.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                  <Link href={`/agenda/${ap.id}`} className="font-semibold text-petrol hover:underline">
+                    {dateTime.format(ap.startsAt)}
+                  </Link>
+                  <span className="flex-1 text-ink/70">
+                    {APPOINTMENT_TYPE_LABELS[ap.type]} · {ap.doctorName ?? "—"}
+                  </span>
+                  <AppointmentStatusBadge status={ap.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

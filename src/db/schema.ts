@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+import { APPOINTMENT_STATUS, APPOINTMENT_TYPES } from "../lib/appointment-constants";
 import { CONSENT_CHANNELS, PATIENT_COVERAGE, PATIENT_SEX } from "../lib/patient-constants";
 import { USER_ROLES } from "../lib/roles";
 
@@ -176,3 +177,69 @@ export const auditLog = sqliteTable(
 );
 
 export type Patient = typeof patients.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Agenda de consultas (dados administrativos — NÃO clínicos).
+// Consultas não são excluídas (gatilho bloqueia DELETE): use o status "cancelado".
+// ---------------------------------------------------------------------------
+
+export const appointments = sqliteTable(
+  "appointments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Médico (users.id com perfil medico) — validado no serviço. */
+    doctorId: integer("doctor_id").notNull(),
+    patientId: integer("patient_id")
+      .notNull()
+      .references(() => patients.id),
+    startsAt: integer("starts_at", { mode: "timestamp_ms" }).notNull(),
+    endsAt: integer("ends_at", { mode: "timestamp_ms" }).notNull(),
+    type: text("type", { enum: APPOINTMENT_TYPES }).notNull(),
+    status: text("status", { enum: APPOINTMENT_STATUS }).notNull().default("agendado"),
+    /** Observação ADMINISTRATIVA curta (ex.: "trazer exames anteriores"). Nunca dados clínicos. */
+    note: text("note"),
+    /** Encaixe: agendado conscientemente sobre outro horário ocupado. */
+    overbooked: integer("overbooked", { mode: "boolean" }).notNull().default(false),
+    cancelReason: text("cancel_reason"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+    createdBy: integer("created_by").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(now),
+    updatedBy: integer("updated_by").notNull(),
+  },
+  (t) => [
+    index("appointments_doctor_start_idx").on(t.doctorId, t.startsAt),
+    index("appointments_patient_start_idx").on(t.patientId, t.startsAt),
+    check("appointments_period_check", sql`${t.endsAt} > ${t.startsAt}`),
+    check(
+      "appointments_status_check",
+      sql`${t.status} in ('agendado', 'confirmado', 'em_atendimento', 'atendido', 'faltou', 'cancelado')`,
+    ),
+    check("appointments_type_check", sql`${t.type} in ('primeira_consulta', 'consulta', 'retorno')`),
+    check("appointments_cancel_check", sql`${t.status} <> 'cancelado' or ${t.cancelReason} is not null`),
+  ],
+);
+
+/** Histórico de cada consulta (append-only): quem agendou, remarcou, confirmou, cancelou etc. */
+export const APPOINTMENT_EVENTS = ["agendada", "remarcada", "status"] as const;
+
+export const appointmentEvents = sqliteTable(
+  "appointment_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    appointmentId: integer("appointment_id")
+      .notNull()
+      .references(() => appointments.id),
+    at: integer("at", { mode: "timestamp_ms" }).notNull().default(now),
+    userId: integer("user_id").notNull(),
+    event: text("event", { enum: APPOINTMENT_EVENTS }).notNull(),
+    fromStatus: text("from_status", { enum: APPOINTMENT_STATUS }),
+    toStatus: text("to_status", { enum: APPOINTMENT_STATUS }),
+    fromStartsAt: integer("from_starts_at", { mode: "timestamp_ms" }),
+    toStartsAt: integer("to_starts_at", { mode: "timestamp_ms" }),
+    fromDoctorId: integer("from_doctor_id"),
+    toDoctorId: integer("to_doctor_id"),
+  },
+  (t) => [index("appointment_events_appointment_idx").on(t.appointmentId)],
+);
+
+export type Appointment = typeof appointments.$inferSelect;

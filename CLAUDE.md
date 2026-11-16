@@ -20,7 +20,7 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 |---|---|---|
 | 1 | Gestão de cadastro de usuários (login, perfis, política de senha) | ✅ Implementado |
 | 2a | Cadastro de pacientes (`/pacientes`: busca, cadastro, ficha, edição, inativação, consentimentos) | ✅ Implementado |
-| 2b | Gestão de agenda | ⏳ A fazer |
+| 2b | Gestão de agenda (`/agenda`: dia por médico, agendar, remarcar, confirmar, cancelar, falta, atendimento) | ✅ Implementado |
 | 3 | Gestão clínica do paciente (prontuário: anamnese, evolução, exames, diagnósticos, anexos) | ⏳ A fazer |
 | 4 | Relatórios gerenciais | ⏳ A fazer |
 | 5 | Receituário médico (simples e controle especial) | ⏳ A fazer |
@@ -82,7 +82,8 @@ Princípio: **mínimo privilégio e necessidade de saber** (LGPD art. 6º, III).
 | Cadastrar/editar/desativar usuários | ✅ | ❌ | ❌ |
 | Desbloquear usuário / redefinir senha provisória | ✅ | ❌ | ❌ |
 | Cadastro de pacientes (dados de identificação e contato) | ✅ | ✅ | ✅ |
-| Agenda: marcar, remarcar, cancelar, confirmar | ✅ | ✅ | ✅ |
+| Agenda: ver, marcar, remarcar, cancelar, confirmar, registrar falta | ❌ | ✅ (só a própria agenda) | ✅ (todos os médicos) |
+| Agenda: iniciar / finalizar atendimento | ❌ | ✅ (só consultas dele) | ❌ |
 | Ver **prontuário clínico** (anamnese, evolução, exames, diagnósticos) | ❌ | ✅ | ❌ |
 | Registrar / aditar prontuário | ❌ | ✅ (somente autor) | ❌ |
 | Emitir receituário, atestado, pedido de exame | ❌ | ✅ | ❌ |
@@ -214,6 +215,15 @@ Leituras de prontuário também são auditadas (quem viu o quê).
 - Agenda: por médico, com status (agendado, confirmado, em atendimento, atendido, faltou, cancelado),
   impedir conflito de horário, registrar quem agendou/alterou.
 - A secretária vê o motivo da consulta apenas como texto administrativo curto — nunca dados clínicos.
+- Implementação (`src/lib/appointment-service.ts`, `src/lib/appointment-constants.ts`):
+  - Administrada pela **secretária** (todos os médicos) e pelo **médico** (somente a própria agenda,
+    imposto no servidor via `canManageDoctor`). O administrador não acessa a agenda.
+  - Conflitos: o paciente nunca pode ter duas consultas sobrepostas; sobreposição na agenda do médico
+    só como **encaixe** confirmado explicitamente. Horário permitido: 07:00–20:00, nunca no passado.
+  - Transições em `STATUS_TRANSITIONS`; `em_atendimento`/`atendido` só pelo médico da consulta;
+    falta só após o horário; cancelamento exige motivo. Remarcar volta o status para "agendado".
+  - Consultas não são excluídas (gatilho); `appointment_events` guarda o histórico (append-only).
+  - Horários gravados em UTC; conversão do fuso do consultório em `src/lib/clinic-time.ts`.
 
 ### 6.3 Gestão clínica (prontuário)
 - Seguir a Res. CFM 1.638/2002 e 1.821/2007: identificação do paciente, anamnese, exame físico,

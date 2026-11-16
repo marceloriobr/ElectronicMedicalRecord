@@ -18,3 +18,4 @@ node -e "const d=require('better-sqlite3')(process.env.DATABASE_FILE);d.exec('de
 npm run --silent db:seed
 node tests/e2e/usuarios-e-senhas.mjs
 node tests/e2e/pacientes.mjs
+node tests/e2e/agenda.mjs

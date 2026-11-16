@@ -51,8 +51,8 @@ npm run test:e2e                         # terminal 2
 | Perfil | Acesso |
 |---|---|
 | Administrador | Cadastra usuários (`/usuarios`); cadastra, edita e inativa pacientes |
-| Médico(a) | Exige CRM + UF no cadastro; cadastra, edita e inativa pacientes |
-| Secretária | Cadastra e edita pacientes (não inativa) |
+| Médico(a) | Exige CRM + UF no cadastro; cadastra, edita e inativa pacientes; gerencia a **própria** agenda e inicia/finaliza seus atendimentos |
+| Secretária | Cadastra e edita pacientes (não inativa); gerencia a agenda de **todos** os médicos |
 
 A matriz completa está em `src/lib/permissions.ts` (e na seção 3 do `CLAUDE.md`).
 
@@ -92,3 +92,19 @@ Tabelas (ver `src/db/schema.ts` e `drizzle/*.sql`):
 - `patients`: identificação e contato dos pacientes (sem dados clínicos). DELETE bloqueado por gatilho.
 - `patient_consents`: histórico de consentimentos por canal (somente inclusão).
 - `audit_log`: trilha de auditoria (somente inclusão; UPDATE/DELETE bloqueados por gatilho).
+- `appointments`: consultas (médico, paciente, início/fim em UTC, tipo, situação, observação
+  administrativa, encaixe, motivo do cancelamento). DELETE bloqueado por gatilho.
+- `appointment_events`: histórico de cada consulta (agendada, remarcada, mudanças de situação), somente inclusão.
+
+## Agenda de consultas (`/agenda`)
+
+- Agenda do dia por médico, com navegação entre dias e horários livres (08:00–18:00, a cada 30 min)
+  que levam direto ao agendamento. Telefone mascarado; sem CPF.
+- Agendar: busca do paciente (POST, fora da URL), data, horário (07:00–20:00), duração (15–90 min),
+  tipo (primeira consulta, consulta, retorno) e observação **administrativa**.
+- Conflitos: paciente nunca em duas consultas ao mesmo tempo; horário já ocupado do médico só como
+  **encaixe** confirmado.
+- Situações: Agendado → Confirmado → Em atendimento → Atendido; ou Faltou (após o horário) /
+  Cancelado (com motivo). Remarcar volta para "Agendado". Histórico completo em cada consulta.
+- Médico só vê e gerencia a própria agenda; a secretária, a de todos. Administrador não acessa.
+- A ficha do paciente mostra as consultas e tem atalho "Agendar consulta".

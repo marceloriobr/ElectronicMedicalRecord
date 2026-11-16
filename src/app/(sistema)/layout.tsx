@@ -30,6 +30,11 @@ export default async function SistemaLayout({ children }: { children: React.Reac
             <Link href="/painel" className="hover:text-gold">
               Painel
             </Link>
+            {can(user.role, "agenda:ler") && (
+              <Link href="/agenda" className="hover:text-gold">
+                Agenda
+              </Link>
+            )}
             {can(user.role, "pacientes:ler") && (
               <Link href="/pacientes" className="hover:text-gold">
                 Pacientes
