@@ -1,7 +1,7 @@
 // E2E do cadastro de pacientes. Depende dos usuários criados em usuarios-e-senhas.mjs (roda antes, em run.sh).
 // Dados 100% fictícios: CPFs aleatórios válidos e nomes com sufixo aleatório a cada execução.
 import Database from 'better-sqlite3';
-import { open, go, BASE } from './harness.mjs';
+import { open, go, BASE, login as hLogin } from './harness.mjs';
 
 const DB = process.env.DATABASE_FILE ?? 'data/test.db';
 const db = new Database(DB);
@@ -30,12 +30,7 @@ const CPF1 = randomCpf(), CPF2 = randomCpf(), CPF3 = randomCpf(), CPF_RESP = ran
 const NAME1 = `Maria ${Tcap} da Conceição`;
 
 // ---------- helpers ----------
-async function login(u, pw) {
-  await go(p, '/'); await p.fill('#username', u); await p.fill('#password', pw);
-  await p.click('button[type=submit]');
-  await p.waitForURL((url) => url.pathname !== '/', { timeout: 30000 });
-  await p.waitForLoadState('networkidle');
-}
+const login = (u, pw) => hLogin(p, u, pw); // senha + código da verificação em duas etapas
 async function logout() { await p.click('button:has-text("Sair")'); await p.waitForURL(BASE + '/'); await p.waitForLoadState('networkidle'); }
 async function submit(label) {
   await p.click(`button:has-text("${label}")`);

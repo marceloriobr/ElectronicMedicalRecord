@@ -9,6 +9,7 @@ export DATABASE_FILE=data/test.db
 export EMR_ADMIN_USERNAME=admin
 export EMR_ADMIN_NAME="Administrador Geral"
 export EMR_ADMIN_PASSWORD="Lirio#Seguro-2027x"
+export EMR_ADMIN_EMAIL="admin@example.com" # fictício: nos testes o e-mail é gravado em data/outbox, não enviado
 mkdir -p test-results
 # Sempre aplica migrações novas; depois zera os usuários do banco de TESTE.
 # Pacientes, consentimentos e auditoria NÃO podem ser apagados (gatilhos no banco):
@@ -16,10 +17,16 @@ mkdir -p test-results
 npm run --silent db:migrate
 # Registros clínicos e receitas (que nunca são apagados) referenciam os usuários: no banco de TESTE,
 # a checagem de chave estrangeira é desligada só para este reset.
-node -e "const d=require('better-sqlite3')(process.env.DATABASE_FILE);d.pragma('foreign_keys = OFF');d.exec('delete from sessions; delete from password_history; delete from users;')"
+node -e "const d=require('better-sqlite3')(process.env.DATABASE_FILE);d.pragma('foreign_keys = OFF');d.exec('delete from sessions; delete from mfa_challenges; delete from password_history; delete from users;')"
+# Falhas de login antigas contariam para o limite por IP (30 em 15 min) e derrubariam execuções seguidas.
+# A trilha é append-only (gatilho): SOMENTE no banco de TESTE o gatilho é removido, as falhas são apagadas
+# e o MESMO gatilho é recriado, tudo em uma transação.
+node -e "const d=require('better-sqlite3')(process.env.DATABASE_FILE);const t=d.prepare(\"select sql from sqlite_master where name='audit_log_no_delete'\").get();d.transaction(()=>{d.exec('drop trigger audit_log_no_delete');d.exec(\"delete from audit_log where action='login_falho'\");d.exec(t.sql);})()"
+rm -rf data/outbox # e-mails de teste (códigos de verificação) de execuções anteriores
 npm run --silent db:seed
 node tests/e2e/usuarios-e-senhas.mjs
 node tests/e2e/pacientes.mjs
 node tests/e2e/agenda.mjs
 node tests/e2e/prontuario.mjs
 node tests/e2e/previsao.mjs
+node tests/e2e/seguranca.mjs

@@ -5,7 +5,7 @@
  */
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { audit } from "@/lib/audit";
+import { audit, audited } from "@/lib/audit";
 import { requireClinicalPermission } from "@/lib/auth";
 import { getCid, searchCid, type Cid } from "@/lib/cid10";
 import { MAX_PRESCRIPTION_ITEMS, RECORD_TEXT_FIELDS, VITAL_SIGNS } from "@/lib/clinical-constants";
@@ -106,19 +106,23 @@ export async function saveRecordAction(_prev: RecordFormState, formData: FormDat
   let savedId: number;
   try {
     if (recordId) {
-      updateDraft(patientId, recordId, { content: parsed.data, finalize }, user);
+      await audited(
+        () => updateDraft(patientId, recordId, { content: parsed.data, finalize }, user),
+        () => ({ userId: user.id, action: finalize ? "finalizar" : "alterar", resource: "registro_clinico", resourceId: recordId, patientId }),
+      );
       savedId = recordId;
-      await audit({ userId: user.id, action: finalize ? "finalizar" : "alterar", resource: "registro_clinico", resourceId: savedId, patientId });
     } else {
-      savedId = createRecord(patientId, { kind: meta.data.kind, content: parsed.data, finalize, appointmentId }, user);
-      await audit({
-        userId: user.id,
-        action: "criar",
-        resource: "registro_clinico",
-        resourceId: savedId,
-        patientId,
-        details: { tipo: meta.data.kind, finalizado: finalize, consultaId: appointmentId ?? null },
-      });
+      savedId = await audited(
+        () => createRecord(patientId, { kind: meta.data.kind, content: parsed.data, finalize, appointmentId }, user),
+        (newId) => ({
+          userId: user.id,
+          action: "criar",
+          resource: "registro_clinico",
+          resourceId: newId,
+          patientId,
+          details: { tipo: meta.data.kind, finalizado: finalize, consultaId: appointmentId ?? null },
+        }),
+      );
     }
   } catch (e) {
     if (e instanceof ClinicalError) {
@@ -147,8 +151,10 @@ export async function addAddendumAction(_prev: SimpleFormState, formData: FormDa
   if (!parsed.success) return { values, fieldErrors: fieldErrors(parsed.error) };
 
   try {
-    const addendumId = addAddendum(patientId, recordId, parsed.data, user);
-    await audit({ userId: user.id, action: "aditar", resource: "registro_clinico", resourceId: recordId, patientId, details: { aditamentoId: addendumId } });
+    await audited(
+      () => addAddendum(patientId, recordId, parsed.data, user),
+      (addendumId) => ({ userId: user.id, action: "aditar", resource: "registro_clinico", resourceId: recordId, patientId, details: { aditamentoId: addendumId } }),
+    );
   } catch (e) {
     if (e instanceof ClinicalError) {
       if (e.code === "forbidden") await denied(user.id, "registro_clinico", recordId, patientId);
@@ -174,8 +180,10 @@ export async function saveProfileAction(_prev: SimpleFormState, formData: FormDa
   if (!parsed.success) return { values: { ...values, negaAlergias: negaAlergias ? "on" : "" }, fieldErrors: fieldErrors(parsed.error) };
 
   try {
-    const profileId = saveClinicalProfile(pid.data, parsed.data, user);
-    await audit({ userId: user.id, action: "alterar", resource: "alergias_medicamentos", resourceId: profileId, patientId: pid.data });
+    await audited(
+      () => saveClinicalProfile(pid.data, parsed.data, user),
+      (profileId) => ({ userId: user.id, action: "alterar", resource: "alergias_medicamentos", resourceId: profileId, patientId: pid.data }),
+    );
   } catch (e) {
     if (e instanceof ClinicalError) return { values, message: e.message };
     throw e;
@@ -207,15 +215,17 @@ export async function issuePrescriptionAction(_prev: PrescriptionFormState, form
 
   let rxId: number;
   try {
-    rxId = issuePrescription(patientId, { ...parsed.data, recordId }, user);
-    await audit({
-      userId: user.id,
-      action: "emitir",
-      resource: "receita",
-      resourceId: rxId,
-      patientId,
-      details: { tipo: parsed.data.type, itens: parsed.data.items.length },
-    });
+    rxId = await audited(
+      () => issuePrescription(patientId, { ...parsed.data, recordId }, user),
+      (newId) => ({
+        userId: user.id,
+        action: "emitir",
+        resource: "receita",
+        resourceId: newId,
+        patientId,
+        details: { tipo: parsed.data.type, itens: parsed.data.items.length },
+      }),
+    );
   } catch (e) {
     if (e instanceof ClinicalError) {
       if (e.code === "forbidden") await denied(user.id, "receita", 0, patientId);
@@ -240,8 +250,10 @@ export async function cancelPrescriptionAction(_prev: SimpleFormState, formData:
   if (!parsed.success) return { values, fieldErrors: fieldErrors(parsed.error) };
 
   try {
-    cancelPrescription(patientId, prescriptionId, parsed.data.reason, user);
-    await audit({ userId: user.id, action: "cancelar", resource: "receita", resourceId: prescriptionId, patientId });
+    await audited(
+      () => cancelPrescription(patientId, prescriptionId, parsed.data.reason, user),
+      () => ({ userId: user.id, action: "cancelar", resource: "receita", resourceId: prescriptionId, patientId }),
+    );
   } catch (e) {
     if (e instanceof ClinicalError) {
       if (e.code === "forbidden") await denied(user.id, "receita", prescriptionId, patientId);

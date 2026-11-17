@@ -1,4 +1,4 @@
-import { open, go, BASE } from './harness.mjs';
+import { open, go, BASE, login as hLogin } from './harness.mjs';
 import { execSync } from 'node:child_process';
 const DB = process.env.DATABASE_FILE ?? 'data/test.db';
 const ADMIN_PW = process.env.EMR_ADMIN_PASSWORD; // senha provisória do admin do banco de TESTE (definida em run.sh)
@@ -8,13 +8,7 @@ console.log('Google Chrome', b.version(), 'via', BASE);
 const ok = (c, m) => { if (!c) throw new Error('FALHOU: ' + m); console.log('✓', m); };
 const shot = (n) => p.screenshot({ path: `test-results/${n}.png`, fullPage: true });
 
-async function login(u, pw) {
-  await go(p, '/'); await p.fill('#username', u); await p.fill('#password', pw);
-  await p.click('button[type=submit]');
-  await p.waitForSelector('text=Entrando…', { timeout: 3000 }).catch(() => {});
-  await p.waitForFunction(() => location.pathname !== '/' || !document.body.innerText.includes('Entrando…'), null, { timeout: 30000 });
-  await p.waitForLoadState('networkidle');
-}
+const login = (u, pw) => hLogin(p, u, pw); // senha + código da verificação em duas etapas
 async function changePw(cur, nw) {
   await p.fill('#currentPassword', cur); await p.fill('#newPassword', nw); await p.fill('#confirmPassword', nw);
   await p.click('button[type=submit]');
@@ -59,21 +53,27 @@ await p.fill('#password', 'Consulta#Lirio77'); await p.fill('#confirmPassword', 
 await shot('06-novo-usuario-preenchido');
 await p.click('button:has-text("Cadastrar usuário")'); await p.waitForURL(/usuarios\?criado/, { timeout: 30000 });
 ok(true, 'médico cadastrado');
+// e-mail é obrigatório (recebe o código da verificação em duas etapas)
+await go(p, '/usuarios/novo');
+await p.fill('#name', 'Sem Email Teste'); await p.fill('#username', 'sem.email'); await p.getByText('Secretária', { exact: true }).click();
+await p.fill('#password', 'Recepcao!Flor88'); await p.fill('#confirmPassword', 'Recepcao!Flor88');
+await p.click('button:has-text("Cadastrar usuário")'); await p.waitForSelector('text=Informe um e-mail válido');
+ok(true, 'usuário sem e-mail é rejeitado no servidor');
 // secretária
 await go(p, '/usuarios/novo');
-await p.fill('#name', 'Ana Souza'); await p.fill('#username', 'ana.souza'); await p.getByText('Secretária', { exact: true }).click();
+await p.fill('#name', 'Ana Souza'); await p.fill('#username', 'ana.souza'); await p.fill('#email', 'secretaria@example.com'); await p.getByText('Secretária', { exact: true }).click();
 await p.fill('#password', 'Recepcao!Flor88'); await p.fill('#confirmPassword', 'Recepcao!Flor88');
 await p.click('button:has-text("Cadastrar usuário")'); await p.waitForURL(/usuarios\?criado/, { timeout: 30000 });
 ok(true, 'secretária cadastrada');
 // duplicado
 await go(p, '/usuarios/novo');
-await p.fill('#name', 'Outra Pessoa'); await p.fill('#username', 'veronica'); await p.getByText('Secretária', { exact: true }).click();
+await p.fill('#name', 'Outra Pessoa'); await p.fill('#username', 'veronica'); await p.fill('#email', 'outra@example.com'); await p.getByText('Secretária', { exact: true }).click();
 await p.fill('#password', 'Recepcao!Flor88'); await p.fill('#confirmPassword', 'Recepcao!Flor88');
 await p.click('button:has-text("Cadastrar usuário")'); await p.waitForSelector('text=já está em uso');
 ok(await p.inputValue('#name') === 'Outra Pessoa', 'usuário duplicado: erro e dados mantidos');
 // médico sem CRM (bypass de cliente via servidor): tenta com CRM vazio
 await go(p, '/usuarios/novo');
-await p.fill('#name', 'Dr Teste Silva'); await p.fill('#username', 'drteste'); await p.getByText('Médico(a)', { exact: true }).click();
+await p.fill('#name', 'Dr Teste Silva'); await p.fill('#username', 'drteste'); await p.fill('#email', 'drteste@example.com'); await p.getByText('Médico(a)', { exact: true }).click();
 await p.fill('#password', 'Recepcao!Flor88'); await p.fill('#confirmPassword', 'Recepcao!Flor88');
 await p.click('button:has-text("Cadastrar usuário")'); await p.waitForSelector('text=Informe o CRM');
 ok(true, 'médico sem CRM é rejeitado no servidor');
@@ -105,7 +105,10 @@ await logout();
 // 5. bloqueio por tentativas
 for (let i = 0; i < 5; i++) await login('veronica', 'errada' + i);
 await login('veronica', 'Prontuario@Seguro9');
-ok(await p.isVisible('text=bloqueado temporariamente'), 'bloqueio após 5 tentativas erradas');
+ok(p.url() === BASE + '/' && sql("select count(*) n from users where username='veronica' and locked_until > unixepoch()*1000").includes('"n":1'), 'bloqueio após 5 tentativas erradas: nem a senha certa entra');
+const lockedMsg = await p.innerText('form p.text-coral-dark');
+await login('nao.existe', 'Qualquer#Senha123');
+ok(lockedMsg === await p.innerText('form p.text-coral-dark') && lockedMsg.includes('Usuário ou senha inválidos'), 'usuário bloqueado e usuário inexistente recebem a MESMA mensagem (sem revelar contas)');
 sql("update users set locked_until=null, failed_login_attempts=0 where username='veronica'");
 
 console.log(sql("select username, role, crm, crm_uf, must_change_password, active from users"));

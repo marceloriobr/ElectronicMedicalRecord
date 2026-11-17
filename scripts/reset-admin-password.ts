@@ -1,7 +1,8 @@
 /**
  * Redefine a senha do administrador para a senha provisória do .env.local
  * (EMR_ADMIN_USERNAME / EMR_ADMIN_PASSWORD), desbloqueia o usuário e exige
- * a troca no próximo acesso. Uso: npm run db:reset-admin
+ * a troca no próximo acesso. Se EMR_ADMIN_EMAIL estiver definido, também grava o e-mail do administrador
+ * (destino do código da verificação em duas etapas). Uso: npm run db:reset-admin
  */
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
@@ -20,6 +21,10 @@ async function main() {
   const policyError = passwordPolicyError(password, user);
   if (policyError) throw new Error(policyError);
 
+  const email = process.env.EMR_ADMIN_EMAIL?.trim().toLowerCase() || undefined;
+  if (!email && !user.email) {
+    throw new Error("Defina EMR_ADMIN_EMAIL no .env.local: sem e-mail o administrador não consegue entrar (verificação em duas etapas).");
+  }
   const passwordHash = await hashPassword(password);
   const now = new Date();
   db.transaction((tx) => {
@@ -31,6 +36,7 @@ async function main() {
         failedLoginAttempts: 0,
         lockedUntil: null,
         active: true,
+        ...(email ? { email } : {}),
         updatedAt: now,
       })
       .where(eq(users.id, user.id))

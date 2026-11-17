@@ -5,7 +5,7 @@ import { LoginForm } from "@/components/login-form";
 import { getSessionUser } from "@/lib/auth";
 
 export default async function LoginPage({ searchParams }: PageProps<"/">) {
-  const { sessao } = await searchParams;
+  const { sessao, verificacao } = await searchParams;
   const user = await getSessionUser();
   if (user) redirect(user.passwordChangeRequired ? "/alterar-senha" : "/painel");
 
@@ -20,6 +20,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/">) {
           {sessao === "expirada" && (
             <div className="mt-4">
               <FormMessage tone="error">Sua sessão foi encerrada por inatividade. Entre novamente.</FormMessage>
+            </div>
+          )}
+          {verificacao === "expirada" && (
+            <div className="mt-4">
+              <FormMessage tone="error">A verificação em duas etapas expirou ou foi cancelada. Entre novamente.</FormMessage>
             </div>
           )}
           <LoginForm />

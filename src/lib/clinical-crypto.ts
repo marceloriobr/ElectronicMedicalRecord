@@ -60,3 +60,24 @@ export function decryptJson<T>(keyVersion: number, payload: string, ctx: CryptoC
   decipher.setAuthTag(tag);
   return JSON.parse(Buffer.concat([decipher.update(data), decipher.final()]).toString("utf8")) as T;
 }
+
+/**
+ * Textos livres ADMINISTRATIVOS (motivo de cancelamento, de inativação, observação da consulta): na prática
+ * alguém acaba escrevendo dado de saúde neles, então também ficam cifrados em repouso.
+ * Formato autoexplicativo na própria coluna: "enc:v<versão da chave>:<iv.tag.dados>".
+ */
+const TEXT_PREFIX = /^enc:v(\d+):(.+)$/;
+
+export function encryptText(text: string, ctx: CryptoContext): string {
+  const { keyVersion, payload } = encryptJson(text, ctx);
+  return `enc:v${keyVersion}:${payload}`;
+}
+
+/** Decifra; valores gravados antes da cifragem (sem o prefixo) são devolvidos como estão. */
+export function decryptText(stored: string, ctx: CryptoContext): string;
+export function decryptText(stored: string | null, ctx: CryptoContext): string | null;
+export function decryptText(stored: string | null, ctx: CryptoContext): string | null {
+  if (stored == null) return null;
+  const m = TEXT_PREFIX.exec(stored);
+  return m ? decryptJson<string>(Number(m[1]), m[2], ctx) : stored;
+}

@@ -1,7 +1,7 @@
 // E2E do prontuário clínico e do receituário. Depende dos usuários criados em usuarios-e-senhas.mjs
 // e do 2º médico criado em agenda.mjs (rodam antes, em run.sh). Dados 100% fictícios.
 import Database from 'better-sqlite3';
-import { open, go, BASE } from './harness.mjs';
+import { open, go, BASE, login as hLogin } from './harness.mjs';
 
 const DB = process.env.DATABASE_FILE ?? 'data/test.db';
 const db = new Database(DB);
@@ -36,12 +36,7 @@ P2.id = Number(insPatient.run(P2.name, P2.name.toLowerCase(), '1939-08-09', 'mas
 const PR = `/pacientes/${P1.id}/prontuario`;
 
 // ---------- helpers ----------
-async function login(u, pw) {
-  await go(p, '/'); await p.fill('#username', u); await p.fill('#password', pw);
-  await p.click('button[type=submit]');
-  await p.waitForURL((url) => url.pathname !== '/', { timeout: 30000 });
-  await p.waitForLoadState('networkidle');
-}
+const login = (u, pw) => hLogin(p, u, pw); // senha + código da verificação em duas etapas
 async function logout() { await p.click('button:has-text("Sair")'); await p.waitForURL(BASE + '/'); await p.waitForLoadState('networkidle'); }
 async function submit(label, busy = 'Salvando…') {
   await p.click(`button:has-text("${label}")`);

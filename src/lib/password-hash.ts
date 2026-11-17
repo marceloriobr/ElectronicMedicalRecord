@@ -6,11 +6,46 @@ const r = 8;
 const p = 1;
 const KEY_LEN = 64;
 
+/**
+ * Cada cálculo reserva ~128 MB e ~0,5 s de CPU. Sem limite, uma rajada de logins esgotaria a memória do
+ * servidor: no máximo MAX_CONCURRENT cálculos ao mesmo tempo e MAX_QUEUE aguardando; além disso, recusa.
+ */
+const MAX_CONCURRENT = 2;
+const MAX_QUEUE = 16;
+let running = 0;
+const waiting: (() => void)[] = [];
+
+/** O servidor está com cálculos de senha demais na fila: peça para tentar de novo. */
+export class HashBusyError extends Error {
+  constructor() {
+    super("Sistema ocupado. Tente novamente em instantes.");
+  }
+}
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= MAX_CONCURRENT) {
+    if (waiting.length >= MAX_QUEUE) throw new HashBusyError();
+    await new Promise<void>((resolve) => waiting.push(resolve)); // a vaga é passada adiante por quem termina
+  } else {
+    running++;
+  }
+  try {
+    return await fn();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else running--;
+  }
+}
+
 function scryptAsync(password: string, salt: Buffer, opts: ScryptOptions): Promise<Buffer> {
-  return new Promise((resolve, reject) =>
-    scrypt(password.normalize("NFKC"), salt, KEY_LEN, { ...opts, maxmem: 256 * N * r }, (err, key) =>
-      err ? reject(err) : resolve(key),
-    ),
+  return withSlot(
+    () =>
+      new Promise((resolve, reject) =>
+        scrypt(password.normalize("NFKC"), salt, KEY_LEN, { ...opts, maxmem: 256 * N * r }, (err, key) =>
+          err ? reject(err) : resolve(key),
+        ),
+      ),
   );
 }
 

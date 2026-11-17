@@ -30,6 +30,7 @@ export default async function UsuariosPage({ searchParams }: PageProps<"/usuario
       mustChangePassword: users.mustChangePassword,
       passwordChangedAt: users.passwordChangedAt,
       lastLoginAt: users.lastLoginAt,
+      lockedUntil: users.lockedUntil,
     })
     .from(users)
     .orderBy(asc(users.name))
@@ -60,7 +61,7 @@ export default async function UsuariosPage({ searchParams }: PageProps<"/usuario
               <th className="px-4 py-3 font-semibold">Nome</th>
               <th className="px-4 py-3 font-semibold">Usuário</th>
               <th className="px-4 py-3 font-semibold">Perfil</th>
-              <th className="px-4 py-3 font-semibold">Situação da senha</th>
+              <th className="px-4 py-3 font-semibold">Situação</th>
               <th className="px-4 py-3 font-semibold">Último acesso</th>
             </tr>
           </thead>
@@ -70,8 +71,14 @@ export default async function UsuariosPage({ searchParams }: PageProps<"/usuario
               return (
                 <tr key={u.id} className={u.active ? "" : "text-ink/40"}>
                   <td className="px-4 py-3">
-                    <span className="font-semibold text-ink">{u.name}</span>
-                    {u.email && <span className="block text-xs text-ink/60">{u.email}</span>}
+                    <Link href={`/usuarios/${u.id}`} className="font-semibold text-petrol hover:underline">
+                      {u.name}
+                    </Link>
+                    {u.email ? (
+                      <span className="block text-xs text-ink/60">{u.email}</span>
+                    ) : (
+                      <span className="block text-xs text-coral-dark">Sem e-mail: não consegue entrar</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{u.username}</td>
                   <td className="px-4 py-3">
@@ -85,6 +92,8 @@ export default async function UsuariosPage({ searchParams }: PageProps<"/usuario
                   <td className="px-4 py-3">
                     {!u.active ? (
                       <Badge tone="muted">Desativado</Badge>
+                    ) : u.lockedUntil && u.lockedUntil > new Date() ? (
+                      <Badge tone="warn">Bloqueado</Badge>
                     ) : u.mustChangePassword ? (
                       <Badge tone="warn">Provisória</Badge>
                     ) : expired ? (

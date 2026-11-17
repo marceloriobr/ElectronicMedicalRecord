@@ -1,7 +1,7 @@
 // E2E da agenda de consultas. Depende dos usuários criados em usuarios-e-senhas.mjs (roda antes, em run.sh).
 // Dados 100% fictícios: pacientes com CPF aleatório e nomes com sufixo aleatório; data da agenda no futuro.
 import Database from 'better-sqlite3';
-import { open, go, BASE } from './harness.mjs';
+import { open, go, BASE, login as hLogin } from './harness.mjs';
 
 const DB = process.env.DATABASE_FILE ?? 'data/test.db';
 const db = new Database(DB);
@@ -41,12 +41,7 @@ for (const pt of [P1, P2]) {
 }
 
 // ---------- helpers ----------
-async function login(u, pw) {
-  await go(p, '/'); await p.fill('#username', u); await p.fill('#password', pw);
-  await p.click('button[type=submit]');
-  await p.waitForURL((url) => url.pathname !== '/', { timeout: 30000 });
-  await p.waitForLoadState('networkidle');
-}
+const login = (u, pw) => hLogin(p, u, pw); // senha + código da verificação em duas etapas
 async function logout() { await p.click('button:has-text("Sair")'); await p.waitForURL(BASE + '/'); await p.waitForLoadState('networkidle'); }
 async function submit(label, busy = 'Salvando…') {
   await p.click(`button:has-text("${label}")`);
@@ -83,7 +78,7 @@ ok(!(await p.locator('nav >> text=Agenda').isVisible()), 'administrador não vê
 await go(p, '/agenda'); ok(p.url().includes('acesso-negado'), 'administrador não acessa /agenda');
 // segundo médico (só como alvo de agenda; não faz login)
 await go(p, '/usuarios/novo');
-await p.fill('#name', 'Paulo Medico Souza'); await p.fill('#username', `paulo.${T}`);
+await p.fill('#name', 'Paulo Medico Souza'); await p.fill('#username', `paulo.${T}`); await p.fill('#email', `paulo.${T}@example.com`);
 await p.getByText('Médico(a)', { exact: true }).click(); await p.fill('#crm', '654321'); await p.selectOption('#crmUf', 'SP');
 await p.fill('#password', 'Consulta#Lirio77'); await p.fill('#confirmPassword', 'Consulta#Lirio77');
 await p.click('button:has-text("Cadastrar usuário")'); await p.waitForURL(/usuarios\?criado/, { timeout: 30000 });

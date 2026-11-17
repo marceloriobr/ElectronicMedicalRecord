@@ -68,6 +68,30 @@ export const sessions = sqliteTable(
   (t) => [index("sessions_user_idx").on(t.userId)],
 );
 
+/**
+ * Verificação em duas etapas (MFA) por e-mail: desafio aberto depois que a senha confere.
+ * O cookie guarda o token; aqui ficam só o hash SHA-256 do token e o HMAC do código (nunca o código).
+ * Registros são temporários: apagados ao concluir, expirar ou esgotar as tentativas.
+ */
+export const mfaChallenges = sqliteTable(
+  "mfa_challenges",
+  {
+    id: text("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    /** Códigos errados digitados neste desafio. */
+    attempts: integer("attempts").notNull().default(0),
+    /** Quantos e-mails já foram enviados para este desafio (limita o reenvio). */
+    sends: integer("sends").notNull().default(1),
+    lastSentAt: integer("last_sent_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("mfa_challenges_user_idx").on(t.userId)],
+);
+
 export type User = typeof users.$inferSelect;
 
 // ---------------------------------------------------------------------------
@@ -158,6 +182,7 @@ export const patientConsents = sqliteTable(
 export const AUDIT_ACTIONS = [
   "ler", "buscar", "criar", "alterar", "inativar", "reativar", "acesso_negado",
   "finalizar", "aditar", "emitir", "imprimir", "cancelar", "sessao_expirada",
+  "login", "login_falho", "logout", "trocar_senha", "redefinir_senha", "desbloquear",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
