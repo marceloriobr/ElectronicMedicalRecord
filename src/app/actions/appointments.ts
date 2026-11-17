@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { audit } from "@/lib/audit";
+import { audit, audited } from "@/lib/audit";
 import { requirePermission } from "@/lib/auth";
 import {
   APPOINTMENT_DURATIONS,
@@ -83,26 +83,30 @@ export async function saveAppointmentAction(_prev: AppointmentFormState, formDat
   let appointmentId: number;
   try {
     if (existing) {
-      appointmentId = existing.data;
-      const { moved, resized } = rescheduleAppointment(appointmentId, parsed.data, actor);
-      await audit({
-        userId: user.id,
-        action: "alterar",
-        resource: "consulta",
-        resourceId: appointmentId,
-        patientId: parsed.data.patientId,
-        details: { remarcada: moved, duracao: resized, medicoId: parsed.data.doctorId },
-      });
+      const aid = (appointmentId = existing.data);
+      await audited(
+        () => rescheduleAppointment(aid, parsed.data, actor),
+        ({ moved, resized }) => ({
+          userId: user.id,
+          action: "alterar",
+          resource: "consulta",
+          resourceId: aid,
+          patientId: parsed.data.patientId,
+          details: { remarcada: moved, duracao: resized, medicoId: parsed.data.doctorId },
+        }),
+      );
     } else {
-      appointmentId = createAppointment(parsed.data, actor);
-      await audit({
-        userId: user.id,
-        action: "criar",
-        resource: "consulta",
-        resourceId: appointmentId,
-        patientId: parsed.data.patientId,
-        details: { medicoId: parsed.data.doctorId, encaixe: parsed.data.allowOverlap },
-      });
+      appointmentId = await audited(
+        () => createAppointment(parsed.data, actor),
+        (newId) => ({
+          userId: user.id,
+          action: "criar",
+          resource: "consulta",
+          resourceId: newId,
+          patientId: parsed.data.patientId,
+          details: { medicoId: parsed.data.doctorId, encaixe: parsed.data.allowOverlap },
+        }),
+      );
     }
   } catch (e) {
     if (e instanceof AppointmentError) {
@@ -148,15 +152,17 @@ export async function changeAppointmentStatusAction(
   if (to === "cancelado" && reason.length < 5) return { message: "Informe o motivo do cancelamento (mínimo de 5 caracteres)." };
 
   try {
-    const before = changeAppointmentStatus(parsed.data.id, to, { id: user.id, role: user.role }, reason || undefined);
-    await audit({
-      userId: user.id,
-      action: "alterar",
-      resource: "consulta",
-      resourceId: parsed.data.id,
-      patientId: before.patientId,
-      details: { status: { de: before.status, para: to } },
-    });
+    await audited(
+      () => changeAppointmentStatus(parsed.data.id, to, { id: user.id, role: user.role }, reason || undefined),
+      (before) => ({
+        userId: user.id,
+        action: "alterar",
+        resource: "consulta",
+        resourceId: parsed.data.id,
+        patientId: before.patientId,
+        details: { status: { de: before.status, para: to } },
+      }),
+    );
   } catch (e) {
     if (e instanceof AppointmentError) {
       if (e.code === "forbidden") {

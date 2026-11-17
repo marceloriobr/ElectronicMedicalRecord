@@ -18,7 +18,7 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 
 | # | Módulo | Status |
 |---|---|---|
-| 1 | Gestão de cadastro de usuários (login, perfis, política de senha) | ✅ Implementado |
+| 1 | Gestão de cadastro de usuários (login com verificação em duas etapas por e-mail, perfis, política de senha, `/usuarios/[id]`: e-mail, desbloqueio, senha provisória, desativação) | ✅ Implementado (falta editar nome/perfil/CRM) |
 | 2a | Cadastro de pacientes (`/pacientes`: busca, cadastro, ficha, edição, inativação, consentimentos) | ✅ Implementado |
 | 2b | Gestão de agenda (`/agenda`: dia por médico, agendar, remarcar, confirmar, cancelar, falta, atendimento) | ✅ Implementado |
 | 2c | Previsão da agenda (`/agenda/previsao`: grade semanal e valores da consulta, ocupação 3/6 meses, oportunidades, pacientes sem retorno, alta, visão financeira na previsão e no Painel) | ✅ Implementado |
@@ -26,7 +26,7 @@ e está sujeito à **LGPD (Lei 13.709/2018)**, ao **sigilo médico** e às norma
 | 4 | Relatórios gerenciais | ⏳ A fazer |
 | 5 | Receituário médico (simples e controle especial, impressão em 2 vias, cancelamento) | 🟡 Parcial: falta assinatura digital ICP-Brasil e QR Code |
 | 6 | Envio de mensagens por WhatsApp e e-mail | ⏳ A fazer |
-| 7 | Trilha de auditoria e painel LGPD (transversal a todos os módulos) | 🟡 Parcial: `audit_log` + `audit()` prontos (pacientes e acesso negado); falta login/logout e tela de consulta |
+| 7 | Trilha de auditoria e painel LGPD (transversal a todos os módulos) | 🟡 Parcial: `audit_log` + `audit()`/`audited()` prontos (todos os módulos, login/logout, administração de usuários); falta a tela de consulta |
 
 Atualize esta tabela quando um módulo for entregue.
 
@@ -42,13 +42,17 @@ Histórico de entregas (todas mescladas no `main`, com E2E no Chrome contra `dat
 | #4 | Agenda de consultas (secretária e médico), histórico `appointment_events` |
 | #5 | Prontuário clínico criptografado (AES-256-GCM), CID-10 DATASUS, aditamento, receituário simples e de controle especial, timeout de 30 min nas áreas clínicas |
 | #6 | Previsão da agenda: disponibilidade do médico, gráficos de barras, oportunidades, pacientes sem retorno + alta, valores da consulta e visão financeira (previsão e Painel) |
+| (branch `feat/seguranca-mfa`, ainda sem PR) | Endurecimento de segurança: MFA por e-mail, login sem enumeração e com limite por IP, inatividade sem contorno, administração de usuários, auditoria transacional, textos livres cifrados, CSP/cabeçalhos, backup criptografado |
 
 Estado do ambiente (Codespace):
-- Banco real de desenvolvimento `data/emr.db` com migrações até `0005_valores_consulta`; backups datados em
+- Banco real de desenvolvimento `data/emr.db` com migrações até `0005_valores_consulta` (**falta aplicar `0006_mfa_email`**: faça
+  backup e rode `npm run db:migrate`; depois garanta que todo usuário tem e-mail — `EMR_ADMIN_EMAIL` + `npm run db:reset-admin`
+  para o admin, e **Usuários → (usuário) → E-mail** para os demais — senão ninguém entra); backups datados em
   `data/emr.db.backup-*` (um antes de cada migração). Contém 15 pacientes **fictícios** (`npm run db:seed-pacientes`)
   e nenhuma consulta passada — por isso a lista "Pacientes sem retorno" fica vazia nele.
 - Usuários do `emr.db`: `admin`, médica e secretária criados pelo responsável (senhas não ficam registradas;
-  use **Usuários → redefinir senha provisória** ou `npm run db:reset-admin`). Usuários e senhas do banco de
+  use **Usuários → (usuário) → Redefinir senha provisória** ou `npm run db:reset-admin`). Em desenvolvimento o código da
+  verificação em duas etapas fica em `data/outbox/` (`npm run mail:ultimo`). Usuários e senhas do banco de
   teste estão em `tests/e2e/` e só valem em `data/test.db`.
 - Para a visão financeira aparecer no `emr.db`, a médica precisa configurar disponibilidade e valores em
   **Previsão → Configurar minha disponibilidade**.
@@ -56,13 +60,15 @@ Estado do ambiente (Codespace):
 
 Próximos passos sugeridos (pendentes, em ordem de prioridade):
 1. Prontuário: upload de anexos/exames (criptografados, validação por magic bytes), atestado e pedido de exame.
-2. Auditoria: registrar login/logout e criar a tela de consulta da trilha (somente admin).
+2. Auditoria: criar a tela de consulta da trilha (somente admin).
 3. Relatórios gerenciais agregados (módulo 4) e exportação auditada.
 4. Previsão: descontar feriados/ausências do médico; opcionalmente limitar o agendamento à grade.
 5. Seed fictício com histórico de consultas (para demonstrar "pacientes sem retorno" e receita).
 6. Receituário: assinatura digital ICP-Brasil e QR Code de validação.
 7. Mensagens WhatsApp/e-mail (APIs oficiais, consentimento, fila) — módulo 6.
-8. Antes de produção: MFA para médicos/admin, cabeçalhos de segurança (CSP/HSTS), backups criptografados, rate limiting.
+8. Antes de produção: configurar SMTP (MFA), agendar `npm run db:backup` e guardar `EMR_BACKUP_KEY` fora do servidor,
+   banco em disco/volume criptografado (nome/CPF/telefone ficam em claro no arquivo), `TRUSTED_PROXY_HOPS` conforme o proxy,
+   rate limiting no envio de mensagens (módulo 6), editar nome/perfil/CRM de usuário.
 
 ---
 
@@ -86,6 +92,8 @@ npm run db:migrate       # aplica migrações
 npm run db:seed          # cria o admin inicial (.env.local)
 npm run db:reset-admin   # volta o admin para a senha provisória
 npm run db:seed-pacientes # cadastra 15 pacientes FICTÍCIOS (idempotente)
+npm run db:backup        # backup CRIPTOGRAFADO em data/backups (EMR_BACKUP_KEY); `-- restaurar <arq> <destino>`
+npm run mail:ultimo      # só dev: último e-mail de data/outbox (código da verificação em duas etapas)
 npm run test:e2e         # E2E no Chrome contra data/test.db
 ```
 
@@ -143,7 +151,7 @@ Regras:
 - A autorização é sempre feita **no servidor**. Esconder botão na UI não é controle de acesso.
 - Checar também **autorização no nível do registro** (ex.: o médico só adita evoluções que ele mesmo
   escreveu; o paciente pertence ao consultório do usuário). Nunca confie em IDs vindos do cliente.
-- Ao criar uma nova rota protegida, adicione-a ao `matcher` de `src/proxy.ts`.
+- Ao criar uma nova rota protegida, adicione-a à lista `PROTECTED` de `src/proxy.ts`.
 - As permissões ficam centralizadas em `src/lib/permissions.ts` (`PERMISSIONS` + `can(role, "...")`).
   Novo módulo = novas chaves lá (ex.: `"prontuario:ler"`); não espalhe `if (role === ...)`.
 
@@ -203,6 +211,9 @@ Ao adicionar ações, estenda `AUDIT_ACTIONS` em `src/db/schema.ts`. Registre:
 `quem` (userId), `quando`, `ação` (login, login_falho, logout, ler, criar, alterar, aditar, imprimir,
 exportar, enviar_mensagem, acesso_negado), `recurso` + `id do recurso`, `paciente_id` quando aplicável,
 IP e user-agent. **Não** grave o conteúdo clínico no log — só a referência.
+**Escritas** usam `audited(() => servico(...), (resultado) => entrada)`: o dado e a auditoria são gravados na mesma
+transação. `audit()` avulso fica para leituras e acessos negados. O IP vem de `clientIpFrom()` (`TRUSTED_PROXY_HOPS`).
+Falhas de login são auditadas **sem** o usuário digitado; elas também alimentam o limite por IP (`login-throttle.ts`).
 Leituras de prontuário também são auditadas (quem viu o quê).
 
 ---
@@ -216,14 +227,19 @@ Leituras de prontuário também são auditadas (quem viu o quê).
 - **XSS**: não use `dangerouslySetInnerHTML`. Texto clínico livre é exibido como texto puro.
 - **CSRF**: Server Actions já validam a origem; não crie endpoints `GET` que alterem estado.
 - **Sessão**: token aleatório no cookie, só o hash SHA-256 no banco; expira em 8 h; troca de senha encerra
-  outras sessões. Adicionar **timeout por inatividade** (ex.: 15–30 min) nas áreas clínicas.
+  outras sessões. **Inatividade**: passados 30 min sem requisição, `getSessionUser` deixa de renovar a "última atividade"
+  e as áreas clínicas exigem novo login (navegar por área não clínica não zera o relógio — não reverter).
 - **Senhas** (já implementado — não enfraquecer): ≥ 12 caracteres com maiúscula, minúscula, número e
   especial; scrypt com sal; validade de 90 dias; sem reutilizar as 5 últimas; bloqueio após 5 tentativas
   por 15 min; senha provisória com troca obrigatória. Regras em `src/lib/password-policy.ts`
   (compartilhadas entre cliente e servidor).
-- **MFA (2FA/TOTP)**: planejar para médicos e administradores antes de produção.
-- **Cabeçalhos**: configurar CSP, `X-Frame-Options: DENY`/`frame-ancestors 'none'`, `Referrer-Policy`,
-  `Permissions-Policy`, HSTS em `next.config.ts`.
+- **MFA** (implementado, todos os perfis): código de 6 dígitos por e-mail após a senha (`src/lib/mfa-service.ts`,
+  `/verificar`); a sessão só nasce depois do código. No banco fica só o HMAC do código. E-mail é obrigatório no cadastro.
+  Envio em `src/lib/mailer.ts` (SMTP; modo `arquivo` só fora de produção). TOTP/app autenticador é evolução possível.
+- **Login** (não enfraquecer): mesma mensagem e mesmo tempo para usuário inexistente, senha errada e bloqueado;
+  limite de 30 falhas por IP em 15 min; no máximo 2 cálculos de scrypt simultâneos (`password-hash.ts`).
+- **Cabeçalhos** (implementado): CSP com nonce por requisição em `src/proxy.ts`; `X-Frame-Options: DENY`,
+  `Referrer-Policy`, `Permissions-Policy`, `nosniff` e HSTS (produção) em `next.config.ts`. Não use script inline sem nonce.
 - **Uploads** (exames/anexos): validar tipo real (magic bytes) e tamanho, renomear com UUID, guardar fora de
   `public/`, servir apenas via rota autenticada e auditada, criptografados em repouso.
 - **Segredos**: só em variáveis de ambiente (`.env.local`, nunca commitado). Documente novas variáveis em
@@ -234,7 +250,9 @@ Leituras de prontuário também são auditadas (quem viu o quê).
   Componentes cliente nunca recebem mais dados do que exibem (não passe o objeto inteiro do paciente).
 - **Cache**: páginas com dados de paciente são dinâmicas e não podem ser cacheadas/compartilhadas entre
   usuários. Nunca use cache estático para dados clínicos.
-- **Rate limiting** em login, recuperação de senha e envio de mensagens.
+- **Rate limiting**: login já tem (por IP e por usuário); falta em envio de mensagens (módulo 6).
+- **Textos livres administrativos** (motivo de cancelamento/inativação, observação da consulta) são cifrados com
+  `encryptText()`/`decryptText()` (`clinical-crypto.ts`). Novo campo de texto livre ligado a paciente = cifrar também.
 
 ---
 
@@ -242,7 +260,8 @@ Leituras de prontuário também são auditadas (quem viu o quê).
 
 ### 6.1 Usuários (implementado)
 - Apenas admin cadastra. Desativar em vez de excluir (preserva autoria de registros clínicos).
-- Usuário não pode alterar o próprio perfil nem desativar a si mesmo.
+- Usuário não pode alterar o próprio perfil nem desativar a si mesmo (nem redefinir a própria senha pela administração).
+- Desativar encerra as sessões; redefinir senha gera senha provisória (troca obrigatória) e desbloqueia. Tudo auditado.
 
 ### 6.2 Pacientes e agenda
 - Cadastro: nome, nome social, data de nascimento, sexo, CPF (validar dígitos, único), CNS opcional,

@@ -9,7 +9,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { appointments, clinicalAddenda, clinicalProfiles, clinicalRecords, patients, prescriptions, users } from "@/db/schema";
 import { getCid, type Cid } from "./cid10";
-import { decryptJson, encryptJson } from "./clinical-crypto";
+import { decryptJson, decryptText, encryptJson, encryptText } from "./clinical-crypto";
 import {
   classifyMedication,
   type PrescriptionType,
@@ -371,7 +371,12 @@ export function getPrescription(patientId: number, id: number): PrescriptionView
   const cancelledByName = row.cancelledBy
     ? (db.select({ name: users.name }).from(users).where(eq(users.id, row.cancelledBy)).get()?.name ?? null)
     : null;
-  return { ...rest, content: decryptJson<PrescriptionPayload>(keyVersion, payload, rxCtx(patientId)), cancelledByName };
+  return {
+    ...rest,
+    cancelReason: decryptText(rest.cancelReason, rxCtx(patientId)),
+    content: decryptJson<PrescriptionPayload>(keyVersion, payload, rxCtx(patientId)),
+    cancelledByName,
+  };
 }
 
 export function listPrescriptions(patientId: number) {
@@ -381,7 +386,9 @@ export function listPrescriptions(patientId: number) {
     .where(eq(prescriptions.patientId, patientId))
     .orderBy(desc(prescriptions.issuedAt), desc(prescriptions.id))
     .all()
-    .map(({ payload, keyVersion, ...rest }) => {
+    // O motivo do cancelamento (cifrado) não é usado na listagem: não sai do serviço.
+    .map(({ payload, keyVersion, cancelReason: _cancelReason, ...rest }) => {
+      void _cancelReason;
       const c = decryptJson<PrescriptionPayload>(keyVersion, payload, rxCtx(patientId));
       return { ...rest, medicamentos: c.items.map((i) => i.medicamento) };
     });
@@ -398,7 +405,7 @@ export function cancelPrescription(patientId: number, id: number, reason: string
   if (rx.authorId !== actor.id) throw new ClinicalError("Somente o médico que emitiu pode cancelar a receita.", undefined, "forbidden");
   if (rx.status !== "emitida") throw new ClinicalError("Esta receita já foi cancelada.");
   db.update(prescriptions)
-    .set({ status: "cancelada", cancelledAt: new Date(), cancelledBy: actor.id, cancelReason: reason })
+    .set({ status: "cancelada", cancelledAt: new Date(), cancelledBy: actor.id, cancelReason: encryptText(reason, rxCtx(patientId)) })
     .where(eq(prescriptions.id, id))
     .run();
 }

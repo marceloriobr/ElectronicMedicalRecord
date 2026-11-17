@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { sessions, users, type UserRole } from "@/db/schema";
 import { audit } from "./audit";
@@ -24,6 +24,7 @@ function hashToken(token: string) {
 export async function createSession(userId: number) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  db.delete(sessions).where(lt(sessions.expiresAt, new Date())).run(); // expurgo das sessões vencidas
   db.insert(sessions).values({ id: hashToken(token), userId, expiresAt, lastSeenAt: new Date() }).run();
 
   (await cookies()).set(SESSION_COOKIE, token, {
@@ -35,11 +36,18 @@ export async function createSession(userId: number) {
   });
 }
 
-export async function destroySession() {
+/** Encerra a sessão do cookie. Devolve o id do usuário (para a auditoria do logout), se havia sessão. */
+export async function destroySession(): Promise<number | null> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
-  if (token) db.delete(sessions).where(eq(sessions.id, hashToken(token))).run();
+  let userId: number | null = null;
+  if (token) {
+    const id = hashToken(token);
+    userId = db.select({ userId: sessions.userId }).from(sessions).where(eq(sessions.id, id)).get()?.userId ?? null;
+    db.delete(sessions).where(eq(sessions.id, id)).run();
+  }
   store.delete(SESSION_COOKIE);
+  return userId;
 }
 
 export type SessionUser = {
@@ -79,8 +87,12 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 
   if (!row || !row.active) return null;
 
+  // Renova a "última atividade" só enquanto a sessão está dentro do limite de inatividade. Passado o
+  // limite, o valor antigo é PRESERVADO: assim a área clínica exige novo login mesmo que o usuário
+  // navegue antes por uma página não clínica (que, do contrário, zeraria o relógio).
   const now = Date.now();
-  if (now - row.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
+  const idle = now - row.lastSeenAt.getTime();
+  if (idle > TOUCH_INTERVAL_MS && idle <= CLINICAL_IDLE_TIMEOUT_MS) {
     db.update(sessions).set({ lastSeenAt: new Date(now) }).where(eq(sessions.id, sessionId)).run();
   }
 
@@ -125,7 +137,7 @@ export async function requirePermission(permission: Permission): Promise<Session
 
 /**
  * Porta de entrada das áreas clínicas (prontuário, receitas): exige a permissão e encerra a sessão
- * se o usuário ficou mais de 30 minutos sem atividade.
+ * se o usuário ficou mais de 30 minutos sem atividade — em QUALQUER área do sistema (ver getSessionUser).
  */
 export async function requireClinicalPermission(permission: Permission): Promise<SessionUser> {
   const user = await requirePermission(permission);

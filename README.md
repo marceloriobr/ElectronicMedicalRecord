@@ -14,7 +14,7 @@ Prontuário eletrônico básico para o consultório da Dra. Verônica Avolio (Ge
 ```bash
 nvm use
 npm install
-cp .env.example .env.local   # defina EMR_ADMIN_PASSWORD (senha provisória forte)
+cp .env.example .env.local   # defina EMR_ADMIN_PASSWORD (senha provisória forte) e EMR_ADMIN_EMAIL
 npm run db:migrate           # cria as tabelas em data/emr.db
 npm run db:seed              # cria o primeiro administrador
 npm run dev                  # http://localhost:3000
@@ -30,6 +30,8 @@ No primeiro acesso, o administrador é obrigado a trocar a senha provisória.
 | `npm run db:migrate` | Aplica as migrações no banco |
 | `npm run db:seed` | Cria o administrador inicial a partir do `.env.local` |
 | `npm run db:reset-admin` | Volta o administrador para a senha provisória do `.env.local` (desbloqueia e exige troca) |
+| `npm run db:backup` | Backup **criptografado** em `data/backups/` (exige `EMR_BACKUP_KEY`); `npm run db:backup -- restaurar <arquivo.enc> <destino.db>` restaura |
+| `npm run mail:ultimo` | Só em desenvolvimento: mostra o último e-mail gravado em `data/outbox/` (código da verificação em duas etapas) |
 | `npm run db:seed-pacientes` | Cadastra 15 pacientes **fictícios** para testes (idempotente) |
 | `npm run typecheck` | Checagem de tipos |
 | `npm run test:e2e` | Testes de ponta a ponta no Google Chrome (ver abaixo) |
@@ -46,6 +48,27 @@ npm run test:e2e                         # terminal 2
 ```
 
 > Dica: evite acentos nas senhas. Em alguns teclados o Chrome bloqueia as teclas de acento em campos de senha.
+
+## Segurança do acesso
+
+- **Verificação em duas etapas (MFA) para todos os perfis**: depois da senha, um código de 6 números é enviado ao
+  e-mail do usuário (validade de 10 min, 5 tentativas, até 3 envios). Por isso **todo usuário precisa de e-mail**.
+  Em desenvolvimento, sem SMTP, o e-mail é gravado em `data/outbox/` — veja com `npm run mail:ultimo`
+  (para o banco de teste: `DATABASE_FILE=data/test.db npm run mail:ultimo`). Em produção configure o SMTP (`.env.example`).
+- **Login**: a resposta é a mesma para usuário inexistente, senha errada e usuário bloqueado; além do bloqueio por
+  usuário (5 erros → 15 min) há limite de 30 falhas por IP a cada 15 min; no máximo 2 cálculos de senha simultâneos.
+- **Inatividade**: após 30 min sem uso, o prontuário e as receitas exigem novo login, mesmo que o usuário navegue
+  antes por outra área.
+- **Administração de usuários** (`/usuarios/[id]`, somente admin): e-mail, desbloqueio, senha provisória e
+  desativação/reativação — tudo auditado. Usuários não são excluídos.
+- **Auditoria**: login, login falho, logout, troca/redefinição de senha e administração de usuários; toda escrita
+  grava o dado e a auditoria na mesma transação.
+- **Cabeçalhos**: CSP com nonce por requisição (`src/proxy.ts`), `X-Frame-Options: DENY`, `nosniff`,
+  `Referrer-Policy`, `Permissions-Policy` e HSTS em produção (`next.config.ts`).
+- **Textos livres** (motivo de cancelamento/inativação, observação da consulta) ficam cifrados no banco.
+- **Backups** criptografados com `npm run db:backup`. O arquivo do banco em uso (`data/*.db`) guarda nome, CPF e
+  telefone em claro: em produção, mantenha-o em **disco/volume criptografado** e com acesso restrito.
+- **Proxy reverso**: ajuste `TRUSTED_PROXY_HOPS` para que o IP da auditoria não possa ser forjado.
 
 ## Usuários e perfis
 

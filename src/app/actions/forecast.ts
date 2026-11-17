@@ -2,7 +2,7 @@
 /** Server Actions da disponibilidade dos médicos e da alta do acompanhamento. */
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { audit } from "@/lib/audit";
+import { audit, audited } from "@/lib/audit";
 import { requirePermission } from "@/lib/auth";
 import { DISCHARGE_REASONS, MAX_WINDOWS_PER_DAY, parseMoneyToCents, PRICE_FIELDS } from "@/lib/availability-constants";
 import { isTime } from "@/lib/clinic-time";
@@ -44,21 +44,23 @@ export async function saveScheduleAction(_prev: ScheduleFormState, formData: For
   if (Object.keys(fieldErrors).length) return { fieldErrors, message: "Corrija os campos destacados." };
 
   try {
-    saveSchedule(user.id, { slotMinutes: slot.data, prices, windows }, user.id);
+    await audited(
+      () => saveSchedule(user.id, { slotMinutes: slot.data, prices, windows }, user.id),
+      // Configuração da agenda: sem dado de paciente.
+      () => ({
+        userId: user.id,
+        action: "alterar",
+        resource: "disponibilidade",
+        resourceId: user.id,
+        details: { duracao: slot.data, faixas: windows.length, valores: true },
+      }),
+    );
   } catch (e) {
     if (e instanceof ForecastError) {
       return { fieldErrors: (e as ForecastError & { fieldErrors?: Record<string, string> }).fieldErrors, message: e.message };
     }
     throw e;
   }
-  // Configuração da agenda: sem dado de paciente.
-  await audit({
-    userId: user.id,
-    action: "alterar",
-    resource: "disponibilidade",
-    resourceId: user.id,
-    details: { duracao: slot.data, faixas: windows.length, valores: true },
-  });
   redirect("/agenda/previsao?ok=disponibilidade");
 }
 
@@ -82,8 +84,10 @@ export async function dischargeAction(_prev: DischargeState, formData: FormData)
   const { patientId, reason, meses } = parsed.data;
 
   try {
-    const id = dischargePatient(patientId, user.id, reason, user.id);
-    await audit({ userId: user.id, action: "criar", resource: "alta", resourceId: id, patientId, details: { motivo: reason } });
+    await audited(
+      () => dischargePatient(patientId, user.id, reason, user.id),
+      (id) => ({ userId: user.id, action: "criar", resource: "alta", resourceId: id, patientId, details: { motivo: reason } }),
+    );
   } catch (e) {
     if (e instanceof ForecastError) {
       if (e.code === "forbidden") await audit({ userId: user.id, action: "acesso_negado", resource: "alta", patientId });

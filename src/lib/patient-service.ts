@@ -6,6 +6,7 @@ import "server-only";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { patientConsents, patients, users, type Patient } from "@/db/schema";
+import { decryptText, encryptText } from "./clinical-crypto";
 import { ageFromBirthDate, formatDateBr, maskCpf, maskPhone, normalizeName, onlyDigits } from "./br-docs";
 import {
   CONSENT_CHANNELS,
@@ -145,6 +146,9 @@ export function updatePatient(id: number, d: PatientFormData, userId: number) {
   return { changedFields, consentChanges };
 }
 
+/** O motivo da inativação é texto livre: fica cifrado em repouso (pode citar a saúde do paciente). */
+const reasonCtx = (patientId: number) => ({ table: "patients", patientId });
+
 export function setPatientActive(id: number, active: boolean, userId: number, reason?: string) {
   const current = getPatient(id);
   if (!current) throw new PatientError("Paciente não encontrado.", undefined, "not_found");
@@ -155,7 +159,7 @@ export function setPatientActive(id: number, active: boolean, userId: number, re
     .set(
       active
         ? { active: true, inactivatedAt: null, inactivatedBy: null, inactivationReason: null, updatedAt: now, updatedBy: userId }
-        : { active: false, inactivatedAt: now, inactivatedBy: userId, inactivationReason: reason, updatedAt: now, updatedBy: userId },
+        : { active: false, inactivatedAt: now, inactivatedBy: userId, inactivationReason: reason ? encryptText(reason, reasonCtx(id)) : reason, updatedAt: now, updatedBy: userId },
     )
     .where(eq(patients.id, id))
     .run();
@@ -163,7 +167,8 @@ export function setPatientActive(id: number, active: boolean, userId: number, re
 }
 
 export function getPatient(id: number) {
-  return db.select().from(patients).where(eq(patients.id, id)).get();
+  const p = db.select().from(patients).where(eq(patients.id, id)).get();
+  return p && { ...p, inactivationReason: decryptText(p.inactivationReason, reasonCtx(p.id)) };
 }
 
 function consentsFromForm(d: PatientFormData): Record<ConsentChannel, boolean> {

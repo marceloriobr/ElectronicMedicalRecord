@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { audit } from "@/lib/audit";
+import { audit, audited } from "@/lib/audit";
 import { requirePermission } from "@/lib/auth";
 import { onlyDigits } from "@/lib/br-docs";
 import { patientFormSchema, readPatientForm, type PatientTextField } from "@/lib/patient-schema";
@@ -48,29 +48,34 @@ export async function savePatientAction(_prev: PatientFormState, formData: FormD
   let patientId: number;
   try {
     if (id) {
-      patientId = id.data;
-      const { changedFields, consentChanges } = updatePatient(patientId, parsed.data, user.id);
-      if (changedFields.length || consentChanges.length) {
-        // Somente NOMES dos campos alterados — nunca os valores.
-        await audit({
-          userId: user.id,
-          action: "alterar",
-          resource: "paciente",
-          resourceId: patientId,
-          patientId,
-          details: { campos: changedFields, consentimentos: consentChanges },
-        });
-      }
+      const pid = (patientId = id.data);
+      await audited(
+        () => updatePatient(pid, parsed.data, user.id),
+        ({ changedFields, consentChanges }) =>
+          changedFields.length || consentChanges.length
+            ? {
+                userId: user.id,
+                action: "alterar",
+                resource: "paciente",
+                resourceId: pid,
+                patientId: pid,
+                // Somente NOMES dos campos alterados — nunca os valores.
+                details: { campos: changedFields, consentimentos: consentChanges },
+              }
+            : null,
+      );
     } else {
-      patientId = createPatient(parsed.data, user.id);
-      await audit({
-        userId: user.id,
-        action: "criar",
-        resource: "paciente",
-        resourceId: patientId,
-        patientId,
-        details: { consentimentos: { whatsapp: parsed.data.consentWhatsapp, email: parsed.data.consentEmail } },
-      });
+      patientId = await audited(
+        () => createPatient(parsed.data, user.id),
+        (newId) => ({
+          userId: user.id,
+          action: "criar",
+          resource: "paciente",
+          resourceId: newId,
+          patientId: newId,
+          details: { consentimentos: { whatsapp: parsed.data.consentWhatsapp, email: parsed.data.consentEmail } },
+        }),
+      );
     }
   } catch (e) {
     if (e instanceof PatientError) {
@@ -112,16 +117,13 @@ export async function setPatientActiveAction(_prev: PatientStatusState, formData
   }
 
   try {
-    const changed = setPatientActive(id.data, active, user.id, reason);
-    if (changed) {
-      await audit({
-        userId: user.id,
-        action: active ? "reativar" : "inativar",
-        resource: "paciente",
-        resourceId: id.data,
-        patientId: id.data,
-      });
-    }
+    await audited(
+      () => setPatientActive(id.data, active, user.id, reason),
+      (changed) =>
+        changed
+          ? { userId: user.id, action: active ? "reativar" : "inativar", resource: "paciente", resourceId: id.data, patientId: id.data }
+          : null,
+    );
   } catch (e) {
     if (e instanceof PatientError) return { message: e.message };
     throw e;

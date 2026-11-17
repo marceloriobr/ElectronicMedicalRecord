@@ -43,6 +43,13 @@
       "when": 1794797899285,
       "tag": "0005_valores_consulta",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794870162172,
+      "tag": "0006_mfa_email",
+      "breakpoints": true
     }
   ]
 }

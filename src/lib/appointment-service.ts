@@ -19,6 +19,7 @@ import {
 } from "./appointment-constants";
 import { addMinutes, clinicDateTime, clinicDayRange, toClinic } from "./clinic-time";
 import { formatDateBr } from "./br-docs";
+import { decryptText, encryptText } from "./clinical-crypto";
 import { can } from "./permissions";
 
 export class AppointmentError extends Error {
@@ -142,6 +143,13 @@ function validateSlot(input: AppointmentInput, excludeId?: number) {
   return { startsAt, endsAt, overbooked: !!doctorBusy };
 }
 
+/**
+ * Observação e motivo do cancelamento são textos livres ADMINISTRATIVOS, mas ficam cifrados em repouso:
+ * na prática alguém acaba escrevendo dado de saúde neles. Quem pode ver a agenda continua lendo normalmente.
+ */
+const textCtx = (patientId: number) => ({ table: "appointments", patientId });
+const sealNote = (note: string | null, patientId: number) => (note ? encryptText(note, textCtx(patientId)) : null);
+
 // ---------------------------------------------------------------------------
 // Comandos
 // ---------------------------------------------------------------------------
@@ -160,7 +168,7 @@ export function createAppointment(input: AppointmentInput, actor: Actor) {
         startsAt: slot.startsAt,
         endsAt: slot.endsAt,
         type: input.type,
-        note: input.note,
+        note: sealNote(input.note, input.patientId),
         overbooked: slot.overbooked,
         createdAt: now,
         createdBy: actor.id,
@@ -198,7 +206,7 @@ export function rescheduleAppointment(id: number, input: AppointmentInput, actor
         startsAt: slot.startsAt,
         endsAt: slot.endsAt,
         type: input.type,
-        note: input.note,
+        note: sealNote(input.note, current.patientId),
         overbooked: slot.overbooked,
         // Mudou o horário/médico: precisa confirmar de novo com o paciente.
         status: moved ? "agendado" : current.status,
@@ -246,7 +254,12 @@ export function changeAppointmentStatus(id: number, to: AppointmentStatus, actor
   const now = new Date();
   db.transaction((tx) => {
     tx.update(appointments)
-      .set({ status: to, cancelReason: to === "cancelado" ? reason : current.cancelReason, updatedAt: now, updatedBy: actor.id })
+      .set({
+        status: to,
+        ...(to === "cancelado" && reason ? { cancelReason: encryptText(reason, textCtx(current.patientId)) } : {}),
+        updatedAt: now,
+        updatedBy: actor.id,
+      })
       .where(eq(appointments.id, id))
       .run();
     tx.insert(appointmentEvents)
@@ -260,6 +273,7 @@ export function changeAppointmentStatus(id: number, to: AppointmentStatus, actor
 // Consultas
 // ---------------------------------------------------------------------------
 
+/** Linha BRUTA (observação e motivo ainda cifrados): para regras de negócio. Para exibir, use getAppointmentDetail. */
 export function getAppointment(id: number): Appointment | undefined {
   return db.select().from(appointments).where(eq(appointments.id, id)).get();
 }
@@ -269,7 +283,7 @@ const creator = alias(users, "creator");
 const updater = alias(users, "updater");
 
 export function getAppointmentDetail(id: number) {
-  return db
+  const row = db
     .select({
       a: appointments,
       patient: {
@@ -291,6 +305,9 @@ export function getAppointmentDetail(id: number) {
     .leftJoin(updater, eq(updater.id, appointments.updatedBy))
     .where(eq(appointments.id, id))
     .get();
+  if (!row) return undefined;
+  const ctx = textCtx(row.a.patientId);
+  return { ...row, a: { ...row.a, note: decryptText(row.a.note, ctx), cancelReason: decryptText(row.a.cancelReason, ctx) } };
 }
 
 export function getAppointmentEvents(id: number) {
@@ -334,7 +351,8 @@ export function listDoctorDay(doctorId: number, date: string) {
     .innerJoin(patients, eq(patients.id, appointments.patientId))
     .where(and(eq(appointments.doctorId, doctorId), gte(appointments.startsAt, start), lt(appointments.startsAt, end)))
     .orderBy(asc(appointments.startsAt), asc(appointments.id))
-    .all();
+    .all()
+    .map((a) => ({ ...a, note: decryptText(a.note, textCtx(a.patientId)) }));
 }
 
 /** Consultas de um paciente, restritas aos médicos que o usuário pode ver. */

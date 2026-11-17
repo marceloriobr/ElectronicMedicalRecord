@@ -74,7 +74,7 @@ export function UserForm() {
             />
           </FormField>
 
-          <FormField id="email" label="E-mail (opcional)" error={errors.email}>
+          <FormField id="email" label="E-mail" error={errors.email} hint="Recebe o código da verificação em duas etapas a cada login.">
             <input
               id="email"
               name="email"
